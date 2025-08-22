@@ -330,8 +330,8 @@ public class ServerPollingService extends Service {
             return customUrl;
         }
         
-        // Default production URL - PRODUCTION READY CONFIGURATION
-        return "https://workspace--thinkbacktechno.replit.app";
+        // Default production URL (replace with actual production domain)
+        return "https://knets-production-domain.com";
     }
     
     @Override

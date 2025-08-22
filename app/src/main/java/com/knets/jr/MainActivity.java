@@ -25,11 +25,13 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.app.AlertDialog;
 
-// Android compatibility imports
+// Android 13+ specific imports
+import android.window.OnBackInvokedDispatcher;
+import android.window.OnBackInvokedCallback;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.OnBackPressedDispatcher;
+import androidx.core.os.BuildCompat;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -80,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences preferences;
     
     // Android 13+ specific callbacks
-    private Object backInvokedCallback; // Android 13+ compatibility
+    private OnBackInvokedCallback backInvokedCallback;
     private OnBackPressedCallback backPressedCallback;
 
     @Override
@@ -89,7 +91,7 @@ public class MainActivity extends AppCompatActivity {
         
         // Android 13+ security initialization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            setupBackHandling();
+            setupAndroid13Compatibility();
         }
         
         setContentView(R.layout.activity_main);
@@ -97,14 +99,7 @@ public class MainActivity extends AppCompatActivity {
         initializeViews();
         initializeServices();
         loadStoredData();
-        
-        // Check if launched for disable verification
-        String action = getIntent().getStringExtra("action");
-        if ("verify_disable".equals(action)) {
-            showDisableVerificationDialog();
-        } else {
-            updateUI();
-        }
+        updateUI();
         
         Log.d(TAG, "MainActivity created - Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
     }
@@ -195,8 +190,8 @@ public class MainActivity extends AppCompatActivity {
         // Determine current step based on state
         updateCurrentStep();
         
-        // Get device IMEI
-        getDeviceImei();
+        // Get device IMEI - request permission if needed
+        requestImeiPermissionAndGet();
         
         Log.d(TAG, "Loaded state - Parent Code Verified: " + (parentCodeVerified ? "✓" : "✗") + 
                " Secret Code Verified: " + (secretCodeVerified ? "✓" : "✗") + 
@@ -615,64 +610,55 @@ public class MainActivity extends AppCompatActivity {
                 "The app will run in the background and automatically respond to parent requests.");
     }
     
-    private void getDeviceImei() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+ compatibility
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
-                    == PackageManager.PERMISSION_GRANTED) {
-                try {
-                    TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-                    if (telephonyManager != null) {
-                        deviceImei = telephonyManager.getImei();
-                        Log.d(TAG, "Real IMEI obtained from TelephonyManager");
-                        if (deviceImei == null || deviceImei.isEmpty()) {
-                            // Fallback to device ID only if IMEI is truly unavailable
-                            deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                            Log.d(TAG, "Fallback to Android ID as IMEI not available");
-                        }
-                    }
-                } catch (SecurityException e) {
-                    Log.e(TAG, "SecurityException getting IMEI, requesting permission", e);
-                    deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                    // Request permission for future attempts
-                    ActivityCompat.requestPermissions(this, 
-                            new String[]{Manifest.permission.READ_PHONE_STATE}, 
-                            PHONE_STATE_PERMISSION_REQUEST);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error getting IMEI", e);
-                    deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                }
-            } else {
-                Log.d(TAG, "READ_PHONE_STATE permission not granted, requesting...");
-                // Use Android ID temporarily until permission is granted
-                deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                ActivityCompat.requestPermissions(this, 
-                        new String[]{Manifest.permission.READ_PHONE_STATE}, 
-                        PHONE_STATE_PERMISSION_REQUEST);
-            }
+    private void requestImeiPermissionAndGet() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+                == PackageManager.PERMISSION_GRANTED) {
+            // Permission already granted, get IMEI immediately
+            collectDeviceImei();
         } else {
-            // Pre-Android 13 method
-            try {
-                TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
-                        == PackageManager.PERMISSION_GRANTED && telephonyManager != null) {
-                    deviceImei = telephonyManager.getDeviceId();
-                    Log.d(TAG, "Real IMEI/Device ID obtained from TelephonyManager");
-                } else {
-                    // Request permission first
-                    ActivityCompat.requestPermissions(this, 
-                            new String[]{Manifest.permission.READ_PHONE_STATE}, 
-                            PHONE_STATE_PERMISSION_REQUEST);
-                    deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error getting device ID", e);
-                deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-            }
+            // Permission not granted, use Android ID temporarily and request permission
+            deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+            Log.d(TAG, "Using temporary Android ID, requesting READ_PHONE_STATE permission");
+            
+            // Request permission with rationale
+            ActivityCompat.requestPermissions(this, 
+                    new String[]{Manifest.permission.READ_PHONE_STATE}, 
+                    PHONE_STATE_PERMISSION_REQUEST);
         }
         
-        Log.d(TAG, "Device ID type: " + (deviceImei != null && deviceImei.length() >= 14 ? "IMEI" : "Android_ID") + 
-                   " - First 4 digits: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
+        Log.d(TAG, "Initial Device ID: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
+    }
+    
+    private void collectDeviceImei() {
+        try {
+            TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+            if (telephonyManager != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Android 8+ method
+                    deviceImei = telephonyManager.getImei();
+                    if (deviceImei == null || deviceImei.isEmpty()) {
+                        // Try slot 0 if getImei() returns null
+                        deviceImei = telephonyManager.getImei(0);
+                    }
+                } else {
+                    // Pre-Android 8 method
+                    deviceImei = telephonyManager.getDeviceId();
+                }
+                
+                if (deviceImei != null && !deviceImei.isEmpty() && deviceImei.length() >= 14) {
+                    Log.d(TAG, "✅ Real IMEI collected: " + deviceImei.substring(0, 4) + "****");
+                    return;
+                }
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException collecting IMEI", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Exception collecting IMEI", e);
+        }
+        
+        // Fallback to Android ID if IMEI collection fails
+        deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + deviceImei.substring(0, 4) + "****");
     }
     
     private void updateDeviceImeiOnServer() {
@@ -791,12 +777,17 @@ public class MainActivity extends AppCompatActivity {
             }
         } else if (requestCode == PHONE_STATE_PERMISSION_REQUEST) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getDeviceImei();
-                updateDeviceInfo();
-                // Update any existing device record with the real IMEI
-                updateDeviceImeiOnServer();
+                Log.d(TAG, "📱 READ_PHONE_STATE permission granted! Collecting real IMEI...");
+                collectDeviceImei();
+                showToast("Device IMEI updated for security!");
+                
+                // Update server with real IMEI if we have parent code
+                if (!storedParentCode.isEmpty()) {
+                    updateDeviceImeiOnServer();
+                }
             } else {
-                showToast("Phone permission required to get device IMEI for security");
+                Log.d(TAG, "📱 READ_PHONE_STATE permission denied, keeping Android ID");
+                showToast("Using device ID for identification");
             }
         }
     }
@@ -813,10 +804,10 @@ public class MainActivity extends AppCompatActivity {
             return customUrl;
         }
         
-        // Try multiple server URLs - PRODUCTION READY CONFIGURATION
+        // Try multiple server URLs - WORKING EXTERNAL URL PRIORITY
         String[] serverUrls = {
-            "https://workspace--thinkbacktechno.replit.app",  // PRODUCTION REPLIT URL
-            "https://knets.replit.app",                       // Alternative production URL
+            "https://109f494a-e49e-4a8a-973f-659f67493858-00-23mfa5oss8rxi.janeway.replit.dev", // CORRECT REPLIT URL
+            "https://knets.replit.app",                       // Production URL
             "http://10.0.2.2:5000",                          // Android emulator localhost
             "http://192.168.1.100:5000",                     // Local network IP fallback
             "http://192.168.0.100:5000"                      // Router IP range fallback
@@ -836,9 +827,21 @@ public class MainActivity extends AppCompatActivity {
      */
     private void setupAndroid13Compatibility() {
         try {
-            // Setup back gesture handling for Android 13+ using reflection for compatibility
+            // Setup OnBackInvokedCallback for Android 13+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                setupAndroid13BackHandling();
+                backInvokedCallback = new OnBackInvokedCallback() {
+                    @Override
+                    public void onBackInvoked() {
+                        // Handle back gesture for Android 13+
+                        handleBackAction();
+                    }
+                };
+                
+                // Register the callback
+                getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, 
+                    backInvokedCallback
+                );
             }
             
             // Setup traditional back pressed for older versions
@@ -859,45 +862,6 @@ public class MainActivity extends AppCompatActivity {
     }
     
     /**
-     * Setup Android 13+ back handling using reflection for compatibility
-     */
-    private void setupAndroid13BackHandling() {
-        try {
-            // Use reflection to avoid compilation issues with Android 13+ APIs
-            Log.d(TAG, "Setting up Android 13+ back handling via reflection");
-            // Implementation would use reflection here but simplified for compilation
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to setup Android 13+ back handling", e);
-        }
-    }
-    
-    /**
-     * Cleanup Android 13+ back handling
-     */
-    private void cleanupAndroid13BackHandling() {
-        try {
-            Log.d(TAG, "Cleaning up Android 13+ back handling");
-            // Implementation would use reflection here but simplified for compilation
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to cleanup Android 13+ back handling", e);
-        }
-    }
-    
-    /**
-     * Setup back handling for all Android versions
-     */
-    private void setupBackHandling() {
-        // Setup traditional back pressed for all versions
-        backPressedCallback = new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                handleBackAction();
-            }
-        };
-        getOnBackPressedDispatcher().addCallback(this, backPressedCallback);
-    }
-    
-    /**
      * Handle back action for both Android 13+ and older versions
      */
     private void handleBackAction() {
@@ -914,10 +878,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         
-        // Clean up Android 13+ callbacks (using reflection for compatibility)
+        // Clean up Android 13+ callbacks
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backInvokedCallback != null) {
             try {
-                cleanupAndroid13BackHandling();
+                getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback);
             } catch (Exception e) {
                 Log.e(TAG, "Error unregistering back callback", e);
             }
@@ -955,97 +919,5 @@ public class MainActivity extends AppCompatActivity {
             showToast("All servers unreachable. Check internet connection.");
             Log.e(TAG, "All server URLs failed");
         }
-    }
-    
-    /**
-     * Show secret code verification dialog for device admin disable
-     */
-    private void showDisableVerificationDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("🔒 Security Verification Required");
-        builder.setMessage("Enter your 4-digit secret code to disable device admin:");
-        
-        // Set up the input
-        final EditText input = new EditText(this);
-        input.setHint("Enter secret code");
-        input.setMaxLines(1);
-        builder.setView(input);
-        
-        // Set up the buttons
-        builder.setPositiveButton("Verify", (dialog, which) -> {
-            String enteredCode = input.getText().toString().trim();
-            
-            if (enteredCode.length() != 4) {
-                showToast("Please enter a 4-digit secret code");
-                showDisableVerificationDialog(); // Show again
-                return;
-            }
-            
-            // Verify with stored secret code
-            String storedCode = preferences.getString("secret_code", "");
-            if (enteredCode.equals(storedCode)) {
-                // Secret code correct - allow disable
-                showToast("Secret code verified. You can now disable device admin.");
-                
-                // Open device admin settings to allow disable
-                Intent intent = new Intent(android.provider.Settings.ACTION_DEVICE_ADMIN_SETTINGS);
-                startActivity(intent);
-                
-                // Also send notification to parent about disable attempt
-                notifyParentOfDisableAttempt(true);
-                
-                finish(); // Close the app
-            } else {
-                showToast("❌ Incorrect secret code. Unauthorized attempt logged.");
-                notifyParentOfDisableAttempt(false);
-                finish(); // Close the app for security
-            }
-        });
-        
-        builder.setNegativeButton("Cancel", (dialog, which) -> {
-            showToast("Device admin disable cancelled");
-            finish();
-        });
-        
-        builder.setCancelable(false); // Prevent canceling without entering code
-        builder.show();
-    }
-    
-    /**
-     * Notify parent of device admin disable attempt
-     */
-    private void notifyParentOfDisableAttempt(boolean successful) {
-        JsonObject jsonBody = new JsonObject();
-        jsonBody.addProperty("parentCode", storedParentCode);
-        jsonBody.addProperty("deviceImei", deviceImei);
-        jsonBody.addProperty("successful", successful);
-        jsonBody.addProperty("timestamp", System.currentTimeMillis());
-        jsonBody.addProperty("action", "device_admin_disable_attempt");
-        
-        RequestBody body = RequestBody.create(
-                MediaType.parse("application/json"), 
-                jsonBody.toString()
-        );
-        
-        String serverUrl = getServerBaseUrl() + "/api/knets-jr/security-alert";
-        
-        Request request = new Request.Builder()
-                .url(serverUrl)
-                .post(body)
-                .build();
-        
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e(TAG, "Failed to notify parent of disable attempt", e);
-            }
-            
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (response.isSuccessful()) {
-                    Log.d(TAG, "Parent notified of disable attempt: " + successful);
-                }
-            }
-        });
     }
 }
