@@ -500,7 +500,7 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void registerDevice() {
-        if (!codeVerified || deviceImei.isEmpty()) {
+        if (!parentCodeVerified || deviceImei.isEmpty()) {
             showToast("Cannot register: Code not verified or IMEI not available");
             return;
         }
@@ -545,14 +545,8 @@ public class MainActivity extends AppCompatActivity {
                             boolean success = jsonResponse.get("success").getAsBoolean();
                             
                             if (success) {
-                                deviceRegistered = true;
-                                preferences.edit()
-                                        .putBoolean("device_registered", true)
-                                        .apply();
-                                
-                                currentStep = 6;
                                 showToast("Device registered successfully!");
-                                updateUI();
+                                completeSetup();
                             } else {
                                 showToast("Device registration failed: " + jsonResponse.get("message").getAsString());
                             }
@@ -696,12 +690,11 @@ public class MainActivity extends AppCompatActivity {
             deviceAdminEnabled = devicePolicyManager.isAdminActive(deviceAdminReceiver);
             
             if (deviceAdminEnabled) {
-                currentStep = 4;
                 showToast("Device admin enabled successfully!");
+                completeSetup();
             } else {
                 showToast("Device admin is required for parental controls");
             }
-            updateUI();
         }
     }
     
@@ -717,10 +710,7 @@ public class MainActivity extends AppCompatActivity {
                     grantResults[1] == PackageManager.PERMISSION_GRANTED;
             
             if (fineLocationGranted && coarseLocationGranted) {
-                locationEnabled = true;
-                currentStep = 5;
                 showToast("Location permissions granted!");
-                updateUI();
                 
                 // For Android 10+ request background location separately
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
