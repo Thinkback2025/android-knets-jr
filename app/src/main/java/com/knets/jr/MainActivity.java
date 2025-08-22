@@ -336,6 +336,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         
+        // Ensure we have the best possible device identifier before proceeding
+        ensureDeviceIdentifier();
+        
         showProgress("Verifying code...");
         
         JsonObject jsonBody = new JsonObject();
@@ -514,6 +517,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         
+        // Final attempt to get real IMEI before registration
+        ensureDeviceIdentifier();
+        
         showProgress("Registering device...");
         
         JsonObject jsonBody = new JsonObject();
@@ -618,9 +624,12 @@ public class MainActivity extends AppCompatActivity {
         } else {
             // Permission not granted, use Android ID temporarily and request permission
             deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-            Log.d(TAG, "Using temporary Android ID, requesting READ_PHONE_STATE permission");
+            Log.d(TAG, "Using temporary Android ID, requesting READ_PHONE_STATE permission immediately");
             
-            // Request permission with rationale
+            // Show rationale to user
+            showToast("Requesting device permission for security identification");
+            
+            // Request permission immediately for better user experience
             ActivityCompat.requestPermissions(this, 
                     new String[]{Manifest.permission.READ_PHONE_STATE}, 
                     PHONE_STATE_PERMISSION_REQUEST);
@@ -661,8 +670,25 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + deviceImei.substring(0, 4) + "****");
     }
     
+    private void ensureDeviceIdentifier() {
+        // Try to get real IMEI if we only have Android ID
+        if (deviceImei != null && deviceImei.length() < 14) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+                    == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Permission available, attempting to upgrade from Android ID to IMEI");
+                collectDeviceImei();
+            }
+        }
+    }
+    
     private void updateDeviceImeiOnServer() {
-        if (deviceImei == null || deviceImei.isEmpty()) {
+        if (deviceImei == null || deviceImei.isEmpty() || storedParentCode.isEmpty()) {
+            return;
+        }
+        
+        // Only send real IMEI to server (skip Android ID updates)
+        if (deviceImei.length() < 14) {
+            Log.d(TAG, "Skipping Android ID update, waiting for real IMEI");
             return;
         }
         
@@ -692,7 +718,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                 if (response.isSuccessful()) {
-                    Log.d(TAG, "Device IMEI updated on server successfully");
+                    Log.d(TAG, "✅ Real IMEI updated on server successfully");
+                    runOnUiThread(() -> {
+                        updateDeviceInfo(); // Refresh UI to show real IMEI
+                    });
                 }
             }
         });
