@@ -25,6 +25,7 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.app.AlertDialog;
 
 // Android 13+ specific imports
 import android.window.OnBackInvokedDispatcher;
@@ -99,7 +100,14 @@ public class MainActivity extends AppCompatActivity {
         initializeViews();
         initializeServices();
         loadStoredData();
-        updateUI();
+        
+        // Check if launched for disable verification
+        String action = getIntent().getStringExtra("action");
+        if ("verify_disable".equals(action)) {
+            showDisableVerificationDialog();
+        } else {
+            updateUI();
+        }
         
         Log.d(TAG, "MainActivity created - Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
     }
@@ -619,16 +627,28 @@ public class MainActivity extends AppCompatActivity {
                     TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
                     if (telephonyManager != null) {
                         deviceImei = telephonyManager.getImei();
+                        Log.d(TAG, "Real IMEI obtained from TelephonyManager");
                         if (deviceImei == null || deviceImei.isEmpty()) {
-                            // Fallback to device ID
+                            // Fallback to device ID only if IMEI is truly unavailable
                             deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+                            Log.d(TAG, "Fallback to Android ID as IMEI not available");
                         }
                     }
+                } catch (SecurityException e) {
+                    Log.e(TAG, "SecurityException getting IMEI, requesting permission", e);
+                    deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+                    // Request permission for future attempts
+                    ActivityCompat.requestPermissions(this, 
+                            new String[]{Manifest.permission.READ_PHONE_STATE}, 
+                            PHONE_STATE_PERMISSION_REQUEST);
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting IMEI", e);
                     deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
                 }
             } else {
+                Log.d(TAG, "READ_PHONE_STATE permission not granted, requesting...");
+                // Use Android ID temporarily until permission is granted
+                deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
                 ActivityCompat.requestPermissions(this, 
                         new String[]{Manifest.permission.READ_PHONE_STATE}, 
                         PHONE_STATE_PERMISSION_REQUEST);
@@ -640,17 +660,59 @@ public class MainActivity extends AppCompatActivity {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
                         == PackageManager.PERMISSION_GRANTED && telephonyManager != null) {
                     deviceImei = telephonyManager.getDeviceId();
+                    Log.d(TAG, "Real IMEI/Device ID obtained from TelephonyManager");
+                } else {
+                    // Request permission first
+                    ActivityCompat.requestPermissions(this, 
+                            new String[]{Manifest.permission.READ_PHONE_STATE}, 
+                            PHONE_STATE_PERMISSION_REQUEST);
+                    deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error getting device ID", e);
-            }
-            
-            if (deviceImei == null || deviceImei.isEmpty()) {
                 deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
             }
         }
         
-        Log.d(TAG, "Device ID obtained: " + (deviceImei != null ? deviceImei.substring(0, 4) + "****" : "null"));
+        Log.d(TAG, "Device ID type: " + (deviceImei != null && deviceImei.length() >= 14 ? "IMEI" : "Android_ID") + 
+                   " - First 4 digits: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
+    }
+    
+    private void updateDeviceImeiOnServer() {
+        if (deviceImei == null || deviceImei.isEmpty()) {
+            return;
+        }
+        
+        // Update server with real IMEI if we have it
+        JsonObject jsonBody = new JsonObject();
+        jsonBody.addProperty("imei", deviceImei);
+        jsonBody.addProperty("parentCode", storedParentCode);
+        
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json"), 
+                jsonBody.toString()
+        );
+        
+        String serverUrl = getServerBaseUrl() + "/api/knets-jr/update-imei";
+        
+        Request request = new Request.Builder()
+                .url(serverUrl)
+                .post(body)
+                .build();
+        
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e(TAG, "Failed to update IMEI on server", e);
+            }
+            
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    Log.d(TAG, "Device IMEI updated on server successfully");
+                }
+            }
+        });
     }
     
     private boolean hasLocationPermissions() {
@@ -734,6 +796,10 @@ public class MainActivity extends AppCompatActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 getDeviceImei();
                 updateDeviceInfo();
+                // Update any existing device record with the real IMEI
+                updateDeviceImeiOnServer();
+            } else {
+                showToast("Phone permission required to get device IMEI for security");
             }
         }
     }
@@ -865,5 +931,97 @@ public class MainActivity extends AppCompatActivity {
             showToast("All servers unreachable. Check internet connection.");
             Log.e(TAG, "All server URLs failed");
         }
+    }
+    
+    /**
+     * Show secret code verification dialog for device admin disable
+     */
+    private void showDisableVerificationDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("🔒 Security Verification Required");
+        builder.setMessage("Enter your 4-digit secret code to disable device admin:");
+        
+        // Set up the input
+        final EditText input = new EditText(this);
+        input.setHint("Enter secret code");
+        input.setMaxLines(1);
+        builder.setView(input);
+        
+        // Set up the buttons
+        builder.setPositiveButton("Verify", (dialog, which) -> {
+            String enteredCode = input.getText().toString().trim();
+            
+            if (enteredCode.length() != 4) {
+                showToast("Please enter a 4-digit secret code");
+                showDisableVerificationDialog(); // Show again
+                return;
+            }
+            
+            // Verify with stored secret code
+            String storedCode = preferences.getString("secret_code", "");
+            if (enteredCode.equals(storedCode)) {
+                // Secret code correct - allow disable
+                showToast("Secret code verified. You can now disable device admin.");
+                
+                // Open device admin settings to allow disable
+                Intent intent = new Intent(android.provider.Settings.ACTION_DEVICE_ADMIN_SETTINGS);
+                startActivity(intent);
+                
+                // Also send notification to parent about disable attempt
+                notifyParentOfDisableAttempt(true);
+                
+                finish(); // Close the app
+            } else {
+                showToast("❌ Incorrect secret code. Unauthorized attempt logged.");
+                notifyParentOfDisableAttempt(false);
+                finish(); // Close the app for security
+            }
+        });
+        
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            showToast("Device admin disable cancelled");
+            finish();
+        });
+        
+        builder.setCancelable(false); // Prevent canceling without entering code
+        builder.show();
+    }
+    
+    /**
+     * Notify parent of device admin disable attempt
+     */
+    private void notifyParentOfDisableAttempt(boolean successful) {
+        JsonObject jsonBody = new JsonObject();
+        jsonBody.addProperty("parentCode", storedParentCode);
+        jsonBody.addProperty("deviceImei", deviceImei);
+        jsonBody.addProperty("successful", successful);
+        jsonBody.addProperty("timestamp", System.currentTimeMillis());
+        jsonBody.addProperty("action", "device_admin_disable_attempt");
+        
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json"), 
+                jsonBody.toString()
+        );
+        
+        String serverUrl = getServerBaseUrl() + "/api/knets-jr/security-alert";
+        
+        Request request = new Request.Builder()
+                .url(serverUrl)
+                .post(body)
+                .build();
+        
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e(TAG, "Failed to notify parent of disable attempt", e);
+            }
+            
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    Log.d(TAG, "Parent notified of disable attempt: " + successful);
+                }
+            }
+        });
     }
 }
