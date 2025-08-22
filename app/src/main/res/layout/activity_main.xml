@@ -14,78 +14,33 @@
 
         <!-- App Logo and Title -->
         <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="16dp"
-            android:src="@drawable/knets_jr_logo"
-            android:contentDescription="Knets Jr Logo"
-            android:scaleType="centerInside" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="16dp"
-            android:text="Knets Jr"
-            android:textColor="@color/primary_color"
-            android:textSize="28sp"
-            android:textStyle="bold" />
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="Knets Jr Logo" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="32dp"
-            android:text="LIVE THE LIFE"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:textStyle="normal"
-            android:letterSpacing="0.1" />
+            android:text="Knets Jr"
+            android:textColor="@color/primary_color"
+            android:textSize="28sp"
+            android:textStyle="bold" />
 
-        <!-- Progress Indicator with Spinner/Tick -->
-        <LinearLayout
+        <!-- Progress Bar -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="8dp"
             android:layout_marginBottom="24dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <!-- Progress Spinner -->
-            <ProgressBar
-                android:id="@+id/progressSpinner"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginEnd="16dp"
-                android:indeterminateTint="@color/primary_color"
-                android:visibility="visible" />
-
-            <!-- Completion Tick Mark -->
-            <TextView
-                android:id="@+id/completionTick"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginEnd="16dp"
-                android:text="✓"
-                android:textColor="@color/success_color"
-                android:textSize="24sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:background="@drawable/circle_active"
-                android:visibility="gone" />
-
-            <!-- Progress Text -->
-            <TextView
-                android:id="@+id/progressText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Setting up your device..."
-                android:textColor="@color/text_color"
-                android:textSize="16sp"
-                android:gravity="center_vertical" />
-
-        </LinearLayout>
+            android:progress="16"
+            android:progressTint="@color/primary_color"
+            android:visibility="visible" />
 
         <!-- Step Counter -->
         <TextView
@@ -94,7 +49,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="16dp"
-            android:text="Step 1 of 5: Enter Verification Codes"
+            android:text="Step 1 of 6: Enter Parent Code"
             android:textColor="@color/primary_color"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -125,7 +80,7 @@
             android:id="@+id/etParentCode"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="24dp"
             android:background="@drawable/edit_text_background"
             android:hint="Enter 10-digit code"
             android:inputType="textCapCharacters|textNoSuggestions"
@@ -137,17 +92,17 @@
             android:textStyle="bold"
             android:digits="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" />
 
-        <!-- Secret Code Input (appears during device admin step) -->
+        <!-- Secret Code Input Section (Hidden initially) -->
         <TextView
             android:id="@+id/tvSecretCodeLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:text="4-Digit Security Code:"
+            android:text="Secret Code:"
             android:textColor="@color/text_color"
             android:textSize="14sp"
             android:textStyle="bold"
-            android:visibility="visible" />
+            android:visibility="gone" />
 
         <EditText
             android:id="@+id/etSecretCode"
@@ -155,15 +110,15 @@
             android:layout_height="56dp"
             android:layout_marginBottom="24dp"
             android:background="@drawable/edit_text_background"
-            android:hint="Enter 4-digit security code"
-            android:inputType="number"
+            android:hint="Enter 4-digit secret code"
+            android:inputType="numberPassword"
             android:maxLength="4"
             android:padding="16dp"
             android:textColor="@color/text_color"
             android:textColorHint="@color/hint_color"
             android:textSize="18sp"
             android:textStyle="bold"
-            android:visibility="visible" />
+            android:visibility="gone" />
 
         <!-- Action Buttons -->
         <Button

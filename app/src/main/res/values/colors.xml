@@ -11,6 +11,4 @@
     <color name="border_color">#e5e7eb</color>
     <color name="success_color">#10b981</color>
     <color name="error_color">#ef4444</color>
-    <color name="step_line_active">#22c55e</color>
-    <color name="step_line_inactive">#E5E7EB</color>
 </resources>

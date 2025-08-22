@@ -20,8 +20,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
-import org.json.JSONObject;
-import org.json.JSONException;
+import com.google.gson.JsonObject;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -146,18 +145,13 @@ public class LocationService extends Service implements LocationListener {
             return;
         }
         
-        JSONObject locationData = new JSONObject();
-        try {
-            locationData.put("deviceImei", deviceImei);
-            locationData.put("latitude", location.getLatitude());
-            locationData.put("longitude", location.getLongitude());
-            locationData.put("accuracy", location.getAccuracy());
-            locationData.put("timestamp", System.currentTimeMillis());
-            locationData.put("provider", location.getProvider());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error creating location data", e);
-            return;
-        }
+        JsonObject locationData = new JsonObject();
+        locationData.addProperty("deviceImei", deviceImei);
+        locationData.addProperty("latitude", location.getLatitude());
+        locationData.addProperty("longitude", location.getLongitude());
+        locationData.addProperty("accuracy", location.getAccuracy());
+        locationData.addProperty("timestamp", System.currentTimeMillis());
+        locationData.addProperty("provider", location.getProvider());
         
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json"), 
