@@ -20,7 +20,7 @@ android {
             debuggable true
         }
         release {
-            minifyEnabled true
+            minifyEnabled false
             shrinkResources false
             debuggable false
             zipAlignEnabled true
@@ -53,15 +53,6 @@ android {
     lint {
         abortOnError false
         checkReleaseBuilds false
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    
-    packagingOptions {
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libjsc.so'
     }
 }
 
