@@ -71,13 +71,10 @@ public class MainActivity extends AppCompatActivity {
     private String storedSecretCode = "";
     private int currentStep = 1;
     
-    // 6-Step Workflow States
-    private boolean codeEntered = false;
-    private boolean codeVerified = false;
-    private boolean secretCodeEntered = false;
+    // 3-Step Workflow States
+    private boolean parentCodeVerified = false;
+    private boolean secretCodeVerified = false;
     private boolean deviceAdminEnabled = false;
-    private boolean locationEnabled = false;
-    private boolean deviceRegistered = false;
     private boolean workflowCompleted = false;
     
     private OkHttpClient httpClient;
@@ -184,12 +181,9 @@ public class MainActivity extends AppCompatActivity {
     private void loadStoredData() {
         storedParentCode = preferences.getString("parent_code", "");
         storedSecretCode = preferences.getString("secret_code", "");
-        codeEntered = !storedParentCode.isEmpty();
-        codeVerified = preferences.getBoolean("code_verified", false);
-        secretCodeEntered = !storedSecretCode.isEmpty();
+        parentCodeVerified = preferences.getBoolean("parent_code_verified", false);
+        secretCodeVerified = preferences.getBoolean("secret_code_verified", false);
         deviceAdminEnabled = devicePolicyManager.isAdminActive(deviceAdminReceiver);
-        locationEnabled = hasLocationPermissions();
-        deviceRegistered = preferences.getBoolean("device_registered", false);
         workflowCompleted = preferences.getBoolean("workflow_completed", false);
         
         // Determine current step based on state
@@ -198,27 +192,21 @@ public class MainActivity extends AppCompatActivity {
         // Get device IMEI
         getDeviceImei();
         
-        Log.d(TAG, "Loaded state - Code: " + (codeEntered ? "✓" : "✗") + 
-               " Verified: " + (codeVerified ? "✓" : "✗") + 
-               " Admin: " + (deviceAdminEnabled ? "✓" : "✗") + 
-               " Location: " + (locationEnabled ? "✓" : "✗") + 
-               " Registered: " + (deviceRegistered ? "✓" : "✗"));
+        Log.d(TAG, "Loaded state - Parent Code Verified: " + (parentCodeVerified ? "✓" : "✗") + 
+               " Secret Code Verified: " + (secretCodeVerified ? "✓" : "✗") + 
+               " Admin: " + (deviceAdminEnabled ? "✓" : "✗"));
     }
     
     private void updateCurrentStep() {
-        if (!codeEntered) currentStep = 1;
-        else if (!codeVerified) currentStep = 2;
-        else if (!secretCodeEntered) currentStep = 3;
-        else if (!deviceAdminEnabled) currentStep = 4;
-        else if (!locationEnabled) currentStep = 5;
-        else if (!deviceRegistered) currentStep = 6;
-        else if (!workflowCompleted) currentStep = 7;
-        else currentStep = 8; // Completed
+        if (!parentCodeVerified) currentStep = 1;
+        else if (!secretCodeVerified) currentStep = 2;
+        else if (!deviceAdminEnabled) currentStep = 3;
+        else currentStep = 4; // Completed
     }
     
     private void updateUI() {
-        // Smart UI behavior: Hide input fields after successful code storage
-        if (codeEntered && codeVerified) {
+        // Smart UI behavior: Hide input fields after successful verification
+        if (parentCodeVerified) {
             etParentCode.setVisibility(View.GONE);
             findViewById(R.id.tvCodeLabel).setVisibility(View.GONE);
         } else {
@@ -227,19 +215,16 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         
-        // Show secret code input after parent code verification but before device admin
-        if (codeVerified && !secretCodeEntered) {
+        // Show secret code input after parent code verification
+        if (parentCodeVerified && !secretCodeVerified) {
             tvSecretCodeLabel.setVisibility(View.VISIBLE);
             etSecretCode.setVisibility(View.VISIBLE);
-        } else if (secretCodeEntered) {
+        } else if (secretCodeVerified) {
             tvSecretCodeLabel.setVisibility(View.GONE);
             etSecretCode.setVisibility(View.GONE);
-            if (!storedSecretCode.isEmpty()) {
-                etSecretCode.setText(storedSecretCode);
-            }
         }
         
-        String stepText = "Step " + currentStep + " of 7: ";
+        String stepText = "Step " + currentStep + " of 3: ";
         String statusText = "";
         
         // Reset button visibility
@@ -249,33 +234,32 @@ public class MainActivity extends AppCompatActivity {
         
         switch (currentStep) {
             case 1:
-                stepText += "Enter Parent Code";
-                statusText = "Enter your 10-digit parent code to connect to Knets";
+                stepText += "Parent Code Verification";
+                statusText = "Enter your 10-digit parent code to connect with Knets dashboard";
                 btnConnect.setVisibility(View.VISIBLE);
-                btnConnect.setText("Save Code");
+                btnConnect.setText("Verify Parent Code");
                 btnConnect.setEnabled(etParentCode.getText().length() == 10);
                 break;
                 
             case 2:
-                stepText += "Verify Code";
-                statusText = "Verifying parent code with Knets server...";
+                stepText += "Secret Code Verification";
+                statusText = "Enter your 4-digit security code for device administration";
                 btnConnect.setVisibility(View.VISIBLE);
-                btnConnect.setText("Verify Code");
-                btnConnect.setEnabled(true);
-                break;
-                
-            case 3:
-                stepText += "Enter Secret Code";
-                statusText = "Enter your 4-digit security code for device admin";
-                btnConnect.setVisibility(View.VISIBLE);
-                btnConnect.setText("Save Secret Code");
+                btnConnect.setText("Verify Secret Code");
                 btnConnect.setEnabled(etSecretCode.getText().length() == 4);
                 break;
                 
-            case 4:
+            case 3:
                 stepText += "Enable Device Admin";
-                statusText = "Enable device administrator to allow remote control";
+                statusText = "Device administrator permission is essential for:\n\n" +
+                           "• Remote lock/unlock of device\n" +
+                           "• Screen time monitoring and control\n" +
+                           "• App usage restrictions\n" +
+                           "• Network access management\n" +
+                           "• Schedule enforcement\n\n" +
+                           "This ensures complete parental control from your dashboard.";
                 btnEnableDeviceAdmin.setVisibility(View.VISIBLE);
+                btnEnableDeviceAdmin.setText("Enable Device Admin");
                 break;
                 
             case 5:
@@ -296,9 +280,7 @@ public class MainActivity extends AppCompatActivity {
                 completeSetup();
                 break;
                 
-            case 8:
-                stepText = "Setup Complete!";
-                statusText = "Knets Jr is ready. Your device is now connected and monitored.";
+            case 4:
                 showCompletedState();
                 break;
         }
@@ -310,15 +292,14 @@ public class MainActivity extends AppCompatActivity {
         updateDeviceInfo();
         
         // Update progress bar
-        int progress = Math.min(currentStep * 100 / 7, 100);
+        int progress = Math.min(currentStep * 100 / 3, 100);
         progressBar.setProgress(progress);
     }
     
     private void handleConnectStep() {
-        String code = etParentCode.getText().toString().trim();
-        
         if (currentStep == 1) {
-            // Step 1: Save code
+            // Step 1: Verify parent code
+            String code = etParentCode.getText().toString().trim();
             if (code.length() != 10) {
                 showToast("Please enter a 10-digit parent code");
                 return;
@@ -327,27 +308,24 @@ public class MainActivity extends AppCompatActivity {
             storedParentCode = code;
             preferences.edit()
                     .putString("parent_code", code)
-                    .putBoolean("code_entered", true)
                     .apply();
             
-            codeEntered = true;
-            currentStep = 2;
-            showToast("Code saved locally");
-            updateUI();
+            verifyCodeWithServer();
             
         } else if (currentStep == 2) {
-            // Step 2: Verify code
-            verifyCodeWithServer();
-        } else if (currentStep == 3) {
-            // Step 3: Save secret code
+            // Step 2: Verify secret code
             String secretCode = etSecretCode.getText().toString().trim();
             if (secretCode.length() != 4) {
                 showToast("Please enter a 4-digit secret code");
                 return;
             }
             
-            // Save secret code to local storage and send to database
-            saveSecretCode(secretCode);
+            storedSecretCode = secretCode;
+            preferences.edit()
+                    .putString("secret_code", secretCode)
+                    .apply();
+                    
+            verifySecretCodeWithServer(secretCode);
         }
     }
     
@@ -398,13 +376,13 @@ public class MainActivity extends AppCompatActivity {
                             boolean valid = jsonResponse.get("valid").getAsBoolean();
                             
                             if (valid) {
-                                codeVerified = true;
+                                parentCodeVerified = true;
                                 preferences.edit()
-                                        .putBoolean("code_verified", true)
+                                        .putBoolean("parent_code_verified", true)
                                         .apply();
                                 
-                                currentStep = 3;
-                                showToast("Code verified successfully!");
+                                showToast("Parent code verification successful");
+                                updateCurrentStep();
                                 updateUI();
                             } else {
                                 showToast("Invalid parent code. Please check and try again.");
@@ -421,21 +399,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     
-    private void saveSecretCode(String secretCode) {
-        showProgress("Saving secret code...");
+    private void verifySecretCodeWithServer(String secretCode) {
+        showProgress("Verifying secret code...");
         
-        // Save to local storage first
-        preferences.edit()
-                .putString("secret_code", secretCode)
-                .apply();
-        
-        storedSecretCode = secretCode;
-        secretCodeEntered = true;
-        
-        // Send to database
         JsonObject jsonBody = new JsonObject();
         jsonBody.addProperty("parentCode", storedParentCode);
-        jsonBody.addProperty("deviceImei", deviceImei);
         jsonBody.addProperty("secretCode", secretCode);
         
         RequestBody body = RequestBody.create(
@@ -443,7 +411,7 @@ public class MainActivity extends AppCompatActivity {
                 jsonBody.toString()
         );
         
-        String serverUrl = getServerBaseUrl() + "/api/knets-jr/save-secret-code";
+        String serverUrl = getServerBaseUrl() + "/api/knets-jr/verify-codes";
         
         Request request = new Request.Builder()
                 .url(serverUrl)
@@ -455,26 +423,41 @@ public class MainActivity extends AppCompatActivity {
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
                 runOnUiThread(() -> {
                     hideProgress();
-                    showToast("Secret code saved locally, will sync with server later");
-                    Log.w(TAG, "Secret code sync failed, saved locally", e);
-                    currentStep = 4;
-                    updateUI();
+                    showToast("Secret code verification failed: " + e.getMessage());
+                    Log.e(TAG, "Secret code verification failed", e);
                 });
             }
             
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String responseBody = response.body() != null ? response.body().string() : "";
+                
                 runOnUiThread(() -> {
                     hideProgress();
                     
                     if (response.isSuccessful()) {
-                        showToast("Secret code saved successfully!");
-                        currentStep = 4;
-                        updateUI();
+                        try {
+                            JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
+                            boolean success = jsonResponse.get("success").getAsBoolean();
+                            
+                            if (success) {
+                                secretCodeVerified = true;
+                                preferences.edit()
+                                        .putBoolean("secret_code_verified", true)
+                                        .apply();
+                                
+                                showToast("Secret code verification successful");
+                                updateCurrentStep();
+                                updateUI();
+                            } else {
+                                showToast("Invalid secret code. Please check and try again.");
+                            }
+                        } catch (Exception e) {
+                            showToast("Error processing server response");
+                            Log.e(TAG, "Error parsing secret verification response", e);
+                        }
                     } else {
-                        showToast("Secret code saved locally, will sync with server later");
-                        currentStep = 4;
-                        updateUI();
+                        showToast("Secret code verification failed: " + response.message());
                     }
                 });
             }
@@ -586,13 +569,7 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void completeSetup() {
-        // Start location service
-        if (hasLocationPermissions()) {
-            Intent serviceIntent = new Intent(this, LocationService.class);
-            startForegroundService(serviceIntent);
-        }
-        
-        // Start server polling service for auto-enable functionality
+        // Start server polling service for auto-enable location functionality
         Intent pollingIntent = new Intent(this, ServerPollingService.class);
         startForegroundService(pollingIntent);
         
@@ -608,11 +585,11 @@ public class MainActivity extends AppCompatActivity {
                 .putBoolean("workflow_completed", true)
                 .apply();
         
-        currentStep = 7;
+        currentStep = 4;
         showToast("Knets Jr setup completed!");
         updateUI();
         
-        Log.d(TAG, "6-step workflow completed - Location auto-enable activated");
+        Log.d(TAG, "3-step workflow completed - Location auto-enable activated");
     }
     
     private void showCompletedState() {
@@ -621,12 +598,13 @@ public class MainActivity extends AppCompatActivity {
         btnEnableDeviceAdmin.setVisibility(View.GONE);
         btnEnableLocation.setVisibility(View.GONE);
         
-        tvStatus.setText("✅ Knets Jr is active and monitoring this device.\n\n" +
-                "Features enabled:\n" +
-                "• Remote device control\n" +
-                "• GPS location tracking\n" +
+        tvStatus.setText("✅ Knets Jr setup completed successfully!\n\n" +
+                "Your device is now connected to your parent's dashboard with:\n\n" +
+                "• Remote device control enabled\n" +
+                "• Automatic location services (activated when requested)\n" +
                 "• Screen time monitoring\n" +
-                "• App usage tracking");
+                "• App usage tracking\n\n" +
+                "The app will run in the background and automatically respond to parent requests.");
     }
     
     private void getDeviceImei() {
@@ -775,9 +753,8 @@ public class MainActivity extends AppCompatActivity {
         }
         
         // Default to current Replit production URL
-        // EMERGENCY FIX: Use direct Replit workspace URL since production domain has routing issues
-        // TODO: Fix production routing for /api/knets-jr/* endpoints
-        return "https://109f494a-e49e-4a8a-973f-659f67493858-00-1ujbf2h8xtgj3.pike.replit.dev";
+        // EMERGENCY FIX: Use production URL that works - replit.app production domain
+        return "https://knets.replit.app";
     }
     
     /**
