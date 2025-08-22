@@ -1,24 +1,54 @@
 # Add project specific ProGuard rules here.
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep all classes in our package
+-keep class com.knets.jr.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep Android framework classes
+-keep class android.** { *; }
+-keep class androidx.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Disable optimizations that cause ResAuto issues
+-dontoptimize
+-dontobfuscate
+-dontpreverify
+
+# Keep resource files and layouts
+-keepresources layout/**
+-keepresources drawable/**
+-keepresources values/**
+
+# Keep attributes that reference resources
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+
+# Keep device admin receiver
+-keep class * extends android.app.admin.DeviceAdminReceiver { *; }
+
+# Keep service classes
+-keep class * extends android.app.Service { *; }
+
+# Keep location service classes
+-keep class * extends android.location.** { *; }
+
+# Suppress warnings
+-dontwarn android.**
+-dontwarn androidx.**
+-dontwarn com.android.**
+
+# Keep manifest entries
+-keep class * implements android.os.Parcelable {
+  public static final android.os.Parcelable$Creator *;
+}
+
+# XML namespace processing fix
+-dontshrink
+-dontskipnonpubliclibraryclasses
+-dontskipnonpubliclibraryclassmembers
 
 # Keep OkHttp and Gson classes
 -keep class okhttp3.** { *; }
