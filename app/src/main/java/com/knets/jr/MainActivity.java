@@ -25,6 +25,13 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+// Android 13+ specific imports
+import android.window.OnBackInvokedDispatcher;
+import android.window.OnBackInvokedCallback;
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.OnBackPressedDispatcher;
+import androidx.core.os.BuildCompat;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -72,10 +79,20 @@ public class MainActivity extends AppCompatActivity {
     
     private OkHttpClient httpClient;
     private SharedPreferences preferences;
+    
+    // Android 13+ specific callbacks
+    private OnBackInvokedCallback backInvokedCallback;
+    private OnBackPressedCallback backPressedCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Android 13+ security initialization
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setupAndroid13Compatibility();
+        }
+        
         setContentView(R.layout.activity_main);
         
         initializeViews();
@@ -633,5 +650,75 @@ public class MainActivity extends AppCompatActivity {
         
         // Default production URL (replace with actual production domain)
         return "https://knets-production-domain.com";
+    }
+    
+    /**
+     * Android 13+ compatibility setup for critical security and runtime requirements
+     */
+    private void setupAndroid13Compatibility() {
+        try {
+            // Setup OnBackInvokedCallback for Android 13+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                backInvokedCallback = new OnBackInvokedCallback() {
+                    @Override
+                    public void onBackInvoked() {
+                        // Handle back gesture for Android 13+
+                        handleBackAction();
+                    }
+                };
+                
+                // Register the callback
+                getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, 
+                    backInvokedCallback
+                );
+            }
+            
+            // Setup traditional back pressed for older versions
+            backPressedCallback = new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    handleBackAction();
+                }
+            };
+            getOnBackPressedDispatcher().addCallback(this, backPressedCallback);
+            
+            Log.d(TAG, "Android 13+ compatibility setup completed successfully");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up Android 13+ compatibility", e);
+            // Continue without crashing - fallback to basic functionality
+        }
+    }
+    
+    /**
+     * Handle back action for both Android 13+ and older versions
+     */
+    private void handleBackAction() {
+        if (workflowCompleted) {
+            // Move app to background instead of closing during active monitoring
+            moveTaskToBack(true);
+        } else {
+            // Prevent accidental exit during setup
+            showToast("Complete the setup to use Knets Jr");
+        }
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        
+        // Clean up Android 13+ callbacks
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backInvokedCallback != null) {
+            try {
+                getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback);
+            } catch (Exception e) {
+                Log.e(TAG, "Error unregistering back callback", e);
+            }
+        }
+        
+        if (backPressedCallback != null) {
+            backPressedCallback.remove();
+        }
     }
 }
