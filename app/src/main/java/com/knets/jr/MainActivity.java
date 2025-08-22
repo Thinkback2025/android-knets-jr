@@ -750,13 +750,13 @@ public class MainActivity extends AppCompatActivity {
             return customUrl;
         }
         
-        // Try multiple server URLs with working configurations
+        // Try multiple server URLs - WORKING EXTERNAL URL PRIORITY
         String[] serverUrls = {
-            "https://34.117.33.233",                         // HTTPS IP (301 redirect indicates HTTPS needed)
-            "https://workspace--thinkbacktechno.replit.app",  // Standard format
+            "https://109f494a-e49e-4a8a-973f-659f67493858-00-23mfa5oss8rxi.janeway.replit.dev", // CORRECT REPLIT URL
             "https://knets.replit.app",                       // Production URL
-            "http://192.168.1.100:5000",                     // Local network IP
-            "http://10.0.2.2:5000"                           // Android emulator localhost
+            "http://10.0.2.2:5000",                          // Android emulator localhost
+            "http://192.168.1.100:5000",                     // Local network IP fallback
+            "http://192.168.0.100:5000"                      // Router IP range fallback
         };
         
         // Return the appropriate URL based on current attempt
@@ -843,11 +843,11 @@ public class MainActivity extends AppCompatActivity {
         int currentAttempt = prefs.getInt("current_server_attempt", 0);
         
         String[] serverUrls = {
-            "https://34.117.33.233",                         // HTTPS IP
-            "https://workspace--thinkbacktechno.replit.app",
-            "https://knets.replit.app",
+            "https://109f494a-e49e-4a8a-973f-659f67493858-00-23mfa5oss8rxi.janeway.replit.dev", // WORKING REPLIT URL
+            "https://knets.replit.app",                       // Production URL
+            "http://10.0.2.2:5000",                          // Emulator localhost
             "http://192.168.1.100:5000",                     // Local network IP
-            "http://10.0.2.2:5000"
+            "http://192.168.0.100:5000"                      // Router IP range
         };
         
         if (currentAttempt < serverUrls.length - 1) {
