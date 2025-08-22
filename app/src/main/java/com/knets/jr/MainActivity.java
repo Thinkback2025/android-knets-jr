@@ -733,8 +733,7 @@ public class MainActivity extends AppCompatActivity {
      * Get the server base URL - configurable for different environments
      */
     private String getServerBaseUrl() {
-        // Use production URL when deployed
-        // For development, use the current Replit URL
+        // Check for custom server URL in preferences
         SharedPreferences prefs = getSharedPreferences("knets_jr", Context.MODE_PRIVATE);
         String customUrl = prefs.getString("server_url", "");
         
@@ -742,9 +741,15 @@ public class MainActivity extends AppCompatActivity {
             return customUrl;
         }
         
-        // Default to current Replit production URL
-        // EMERGENCY FIX: Use production URL that works - replit.app production domain
-        return "https://knets.replit.app";
+        // Try multiple server URLs in order of preference
+        String[] serverUrls = {
+            "https://workspace--thinkbacktechno.replit.app",  // Current environment
+            "https://knets.replit.app",                       // Production URL 
+            "http://10.0.2.2:5000"                           // Android emulator localhost
+        };
+        
+        // For now, return the first URL (can be made dynamic later)
+        return serverUrls[0];
     }
     
     /**
