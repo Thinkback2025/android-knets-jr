@@ -83,13 +83,14 @@
             android:layout_marginBottom="24dp"
             android:background="@drawable/edit_text_background"
             android:hint="Enter 10-digit code"
-            android:inputType="number"
+            android:inputType="textCapCharacters|textNoSuggestions"
             android:maxLength="10"
             android:padding="16dp"
             android:textColor="@color/text_color"
             android:textColorHint="@color/hint_color"
             android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:digits="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" />
 
         <!-- Action Buttons -->
         <Button

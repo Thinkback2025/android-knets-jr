@@ -128,10 +128,20 @@ public class MainActivity extends AppCompatActivity {
             
             @Override
             public void afterTextChanged(Editable s) {
-                if (s.length() == 10) {
-                    // Auto-advance when 10-digit code is complete
+                // Convert input to uppercase for consistency
+                String input = s.toString().toUpperCase();
+                if (!input.equals(s.toString())) {
+                    etParentCode.setText(input);
+                    etParentCode.setSelection(input.length());
+                }
+                
+                if (input.length() == 10) {
+                    // Auto-advance when 10-character code is complete
                     btnConnect.setEnabled(true);
                     btnConnect.setText("Verify Code");
+                } else {
+                    btnConnect.setEnabled(false);
+                    btnConnect.setText("Save Code");
                 }
             }
         });
