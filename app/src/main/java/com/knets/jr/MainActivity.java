@@ -775,7 +775,9 @@ public class MainActivity extends AppCompatActivity {
         }
         
         // Default to current Replit production URL
-        return "https://knets.replit.app";
+        // EMERGENCY FIX: Use direct Replit workspace URL since production domain has routing issues
+        // TODO: Fix production routing for /api/knets-jr/* endpoints
+        return "https://109f494a-e49e-4a8a-973f-659f67493858-00-1ujbf2h8xtgj3.pike.replit.dev";
     }
     
     /**
