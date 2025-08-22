@@ -13,6 +13,7 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.Editable;
@@ -347,10 +348,13 @@ public class MainActivity extends AppCompatActivity {
         );
         
         String serverUrl = getServerBaseUrl() + "/api/knets-jr/verify-code";
+        Log.d(TAG, "Attempting verification with URL: " + serverUrl);
+        Log.d(TAG, "Request body: " + jsonBody.toString());
         
         Request request = new Request.Builder()
                 .url(serverUrl)
                 .post(body)
+                .addHeader("Content-Type", "application/json")
                 .build();
         
         httpClient.newCall(request).enqueue(new Callback() {
@@ -358,8 +362,13 @@ public class MainActivity extends AppCompatActivity {
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
                 runOnUiThread(() -> {
                     hideProgress();
-                    showToast("Code verification failed: " + e.getMessage());
-                    Log.e(TAG, "Code verification failed", e);
+                    String errorMsg = "Network error: " + e.getMessage();
+                    showToast(errorMsg);
+                    Log.e(TAG, "Code verification network failure", e);
+                    Log.e(TAG, "Failed URL: " + serverUrl);
+                    
+                    // Try fallback URLs
+                    tryFallbackServers();
                 });
             }
             
@@ -748,8 +757,13 @@ public class MainActivity extends AppCompatActivity {
             "http://10.0.2.2:5000"                           // Android emulator localhost
         };
         
-        // For now, return the first URL (can be made dynamic later)
-        return serverUrls[0];
+        // Return the appropriate URL based on current attempt
+        int currentAttempt = prefs.getInt("current_server_attempt", 0);
+        if (currentAttempt < serverUrls.length) {
+            return serverUrls[currentAttempt];
+        }
+        
+        return serverUrls[0];  // Default to first URL
     }
     
     /**
@@ -819,6 +833,33 @@ public class MainActivity extends AppCompatActivity {
         
         if (backPressedCallback != null) {
             backPressedCallback.remove();
+        }
+    }
+    
+    private void tryFallbackServers() {
+        SharedPreferences prefs = getSharedPreferences("knets_jr", Context.MODE_PRIVATE);
+        int currentAttempt = prefs.getInt("current_server_attempt", 0);
+        
+        String[] serverUrls = {
+            "https://workspace--thinkbacktechno.replit.app",
+            "https://knets.replit.app", 
+            "http://10.0.2.2:5000"
+        };
+        
+        if (currentAttempt < serverUrls.length - 1) {
+            currentAttempt++;
+            prefs.edit().putInt("current_server_attempt", currentAttempt).apply();
+            
+            Log.d(TAG, "Trying fallback server #" + currentAttempt + ": " + serverUrls[currentAttempt]);
+            showToast("Trying alternate server...");
+            
+            // Retry verification with new server
+            new Handler().postDelayed(() -> verifyCodeWithServer(), 1000);
+        } else {
+            // All servers failed
+            prefs.edit().putInt("current_server_attempt", 0).apply();
+            showToast("All servers unreachable. Check internet connection.");
+            Log.e(TAG, "All server URLs failed");
         }
     }
 }
