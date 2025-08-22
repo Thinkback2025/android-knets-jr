@@ -816,10 +816,10 @@ public class MainActivity extends AppCompatActivity {
             return customUrl;
         }
         
-        // Try multiple server URLs - WORKING EXTERNAL URL PRIORITY
+        // Try multiple server URLs - PRODUCTION READY CONFIGURATION
         String[] serverUrls = {
-            "https://109f494a-e49e-4a8a-973f-659f67493858-00-23mfa5oss8rxi.janeway.replit.dev", // CORRECT REPLIT URL
-            "https://knets.replit.app",                       // Production URL
+            "https://workspace--thinkbacktechno.replit.app",  // PRODUCTION REPLIT URL
+            "https://knets.replit.app",                       // Alternative production URL
             "http://10.0.2.2:5000",                          // Android emulator localhost
             "http://192.168.1.100:5000",                     // Local network IP fallback
             "http://192.168.0.100:5000"                      // Router IP range fallback
