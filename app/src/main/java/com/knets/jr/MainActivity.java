@@ -37,8 +37,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import org.json.JSONObject;
+import org.json.JSONException;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -326,10 +326,16 @@ public class MainActivity extends AppCompatActivity {
     private void verifyDualCodesWithServer(String parentCode, String secretCode) {
         showProgress("Verifying codes with database...");
         
-        JsonObject jsonBody = new JsonObject();
-        jsonBody.addProperty("parentCode", parentCode);
-        jsonBody.addProperty("secretCode", secretCode);
-        jsonBody.addProperty("deviceImei", deviceImei);
+        JSONObject jsonBody = new JSONObject();
+        try {
+            jsonBody.put("parentCode", parentCode);
+            jsonBody.put("secretCode", secretCode);
+            jsonBody.put("deviceImei", deviceImei);
+        } catch (JSONException e) {
+            showToast("Error preparing verification data");
+            hideProgress();
+            return;
+        }
         
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json"), 
@@ -362,8 +368,8 @@ public class MainActivity extends AppCompatActivity {
                     
                     if (response.isSuccessful()) {
                         try {
-                            JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
-                            boolean valid = jsonResponse.get("valid").getAsBoolean();
+                            JSONObject jsonResponse = new JSONObject(responseBody);
+                            boolean valid = jsonResponse.getBoolean("valid");
                             
                             if (valid) {
                                 // Both codes verified successfully - save locally
@@ -390,11 +396,11 @@ public class MainActivity extends AppCompatActivity {
                                 updateUI();
                             } else {
                                 String message = jsonResponse.has("message") ? 
-                                    jsonResponse.get("message").getAsString() : 
+                                    jsonResponse.getString("message") : 
                                     "Invalid parent code or security code";
                                 showToast("Verification failed: " + message);
                             }
-                        } catch (Exception e) {
+                        } catch (JSONException e) {
                             showToast("Error processing server response");
                             Log.e(TAG, "Error parsing dual verification response", e);
                         }

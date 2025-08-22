@@ -15,8 +15,9 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -153,46 +154,50 @@ public class ServerPollingService extends Service {
                 response.close();
                 
                 try {
-                    JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
+                    JSONObject jsonResponse = new JSONObject(responseBody);
                     
-                    if (jsonResponse.has("commands") && jsonResponse.get("commands").isJsonArray()) {
-                        processCommands(jsonResponse.get("commands").getAsJsonArray());
+                    if (jsonResponse.has("commands")) {
+                        processCommands(jsonResponse.getJSONArray("commands"));
                     }
                     
-                } catch (Exception e) {
+                } catch (JSONException e) {
                     Log.e(TAG, "Error processing command response", e);
                 }
             }
         });
     }
     
-    private void processCommands(com.google.gson.JsonArray commands) {
-        for (int i = 0; i < commands.size(); i++) {
-            JsonObject command = commands.get(i).getAsJsonObject();
-            String commandType = command.get("type").getAsString();
-            
-            Log.d(TAG, "Processing command: " + commandType);
-            
-            switch (commandType) {
-                case "ENABLE_LOCATION":
-                    handleEnableLocationCommand();
-                    break;
-                case "REQUEST_LOCATION":
-                    handleLocationRequestCommand();
-                    break;
-                case "LOCK_DEVICE":
-                    handleLockDeviceCommand();
-                    break;
-                case "UNLOCK_DEVICE":
-                    handleUnlockDeviceCommand();
-                    break;
-                default:
-                    Log.w(TAG, "Unknown command type: " + commandType);
-                    break;
+    private void processCommands(JSONArray commands) {
+        try {
+            for (int i = 0; i < commands.length(); i++) {
+                JSONObject command = commands.getJSONObject(i);
+                String commandType = command.getString("type");
+                
+                Log.d(TAG, "Processing command: " + commandType);
+                
+                switch (commandType) {
+                    case "ENABLE_LOCATION":
+                        handleEnableLocationCommand();
+                        break;
+                    case "REQUEST_LOCATION":
+                        handleLocationRequestCommand();
+                        break;
+                    case "LOCK_DEVICE":
+                        handleLockDeviceCommand();
+                        break;
+                    case "UNLOCK_DEVICE":
+                        handleUnlockDeviceCommand();
+                        break;
+                    default:
+                        Log.w(TAG, "Unknown command type: " + commandType);
+                        break;
+                }
+                
+                // Acknowledge command processed
+                acknowledgeCommand(command.getString("id"));
             }
-            
-            // Acknowledge command processed
-            acknowledgeCommand(command.get("id").getAsString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error processing commands array", e);
         }
     }
     
@@ -256,11 +261,16 @@ public class ServerPollingService extends Service {
     }
     
     private void acknowledgeCommand(String commandId) {
-        JsonObject ackData = new JsonObject();
-        ackData.addProperty("commandId", commandId);
-        ackData.addProperty("deviceImei", deviceImei);
-        ackData.addProperty("status", "processed");
-        ackData.addProperty("timestamp", System.currentTimeMillis());
+        JSONObject ackData = new JSONObject();
+        try {
+            ackData.put("commandId", commandId);
+            ackData.put("deviceImei", deviceImei);
+            ackData.put("status", "processed");
+            ackData.put("timestamp", System.currentTimeMillis());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating acknowledgment data", e);
+            return;
+        }
         
         okhttp3.RequestBody body = okhttp3.RequestBody.create(
                 okhttp3.MediaType.parse("application/json"), 
