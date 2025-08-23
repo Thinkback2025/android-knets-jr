@@ -1,12 +1,11 @@
-name: Build Knets Jr APK from Package
+name: Build Knets Jr Android APK
 
 on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      package_name:
-        description: 'Package name (e.g., knets-android-AUTO-ENABLE-PERMISSIONS-FINAL.tar.gz)'
-        required: true
-        default: 'knets-android-AUTO-ENABLE-PERMISSIONS-FINAL.tar.gz'
 
 jobs:
   build:
@@ -15,20 +14,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Extract Android package
-      run: |
-        echo "📦 Extracting package: ${{ github.event.inputs.package_name }}"
-        if [ -f "${{ github.event.inputs.package_name }}" ]; then
-          tar -xzf "${{ github.event.inputs.package_name }}"
-          echo "✅ Package extracted successfully"
-          ls -la
-        else
-          echo "❌ Package not found: ${{ github.event.inputs.package_name }}"
-          echo "Available files:"
-          ls -la *.tar.gz 2>/dev/null || echo "No .tar.gz files found"
-          exit 1
-        fi
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -43,23 +28,6 @@ jobs:
         target: android-34
         arch: x86_64
         
-    - name: Set up Gradle environment
-      run: |
-        echo "🔧 Configuring build environment..."
-        # Set JVM options for Gradle
-        export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=512m"
-        export _JAVA_OPTIONS="-Xmx2048m"
-        
-        # Create gradle.properties for the project
-        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" > gradle.properties
-        echo "org.gradle.daemon=false" >> gradle.properties
-        echo "org.gradle.parallel=false" >> gradle.properties
-        echo "org.gradle.workers.max=1" >> gradle.properties
-        echo "org.gradle.configureondemand=false" >> gradle.properties
-        echo "android.useAndroidX=true" >> gradle.properties
-        echo "android.enableJetifier=true" >> gradle.properties
-        echo "✅ Build environment configured"
-        
     - name: Accept Android SDK licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
@@ -73,141 +41,47 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
           
-    - name: Create app icons
+    - name: Create default app icons
       run: |
-        echo "🎨 Creating app icons..."
-        # Find Android project directory
-        ANDROID_DIR=$(find . -name "AndroidManifest.xml" -type f | head -1 | xargs dirname | xargs dirname | xargs dirname)
-        if [ -z "$ANDROID_DIR" ]; then
-          echo "❌ Android project not found"
-          exit 1
-        fi
+        # Create simple colored rectangles as placeholders for icons
+        mkdir -p app/src/main/res/mipmap-hdpi
+        mkdir -p app/src/main/res/mipmap-mdpi  
+        mkdir -p app/src/main/res/mipmap-xhdpi
+        mkdir -p app/src/main/res/mipmap-xxhdpi
+        mkdir -p app/src/main/res/mipmap-xxxhdpi
         
-        echo "📱 Android project found: $ANDROID_DIR"
+        # Create simple PNG placeholders (base64 encoded 1x1 green pixels)
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-hdpi/ic_launcher.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-mdpi/ic_launcher.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xhdpi/ic_launcher.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
         
-        # Create icon directories
-        mkdir -p "$ANDROID_DIR/src/main/res/mipmap-hdpi"
-        mkdir -p "$ANDROID_DIR/src/main/res/mipmap-mdpi"  
-        mkdir -p "$ANDROID_DIR/src/main/res/mipmap-xhdpi"
-        mkdir -p "$ANDROID_DIR/src/main/res/mipmap-xxhdpi"
-        mkdir -p "$ANDROID_DIR/src/main/res/mipmap-xxxhdpi"
-        
-        # Create simple PNG icons
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-hdpi/ic_launcher.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-hdpi/ic_launcher_round.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-mdpi/ic_launcher.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-mdpi/ic_launcher_round.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xhdpi/ic_launcher.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xhdpi/ic_launcher_round.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xxhdpi/ic_launcher.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xxhdpi/ic_launcher_round.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
-        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$ANDROID_DIR/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png"
-        
-        echo "✅ App icons created"
-        
-    - name: Find and build Android project
-      run: |
-        echo "🔍 Finding Android project..."
-        
-        # Find the directory containing gradlew
-        GRADLE_DIR=$(find . -name "gradlew" -type f | head -1 | xargs dirname)
-        if [ -z "$GRADLE_DIR" ]; then
-          echo "❌ Gradle wrapper not found"
-          exit 1
-        fi
-        
-        echo "📂 Gradle project found: $GRADLE_DIR"
-        cd "$GRADLE_DIR"
-        
-        # Make gradlew executable
-        chmod +x ./gradlew
-        echo "✅ Made gradlew executable"
-        
-        # Configure Gradle for CI environment
-        mkdir -p ~/.gradle
-        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> ~/.gradle/gradle.properties
-        echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
-        echo "org.gradle.parallel=false" >> ~/.gradle/gradle.properties
-        echo "org.gradle.workers.max=1" >> ~/.gradle/gradle.properties
-        echo "org.gradle.configureondemand=false" >> ~/.gradle/gradle.properties
-        echo "✅ Gradle configured for CI build"
-        
-        # Clean and build with CI-optimized settings
-        echo "🧹 Cleaning project..."
-        ./gradlew clean --no-daemon --no-parallel --max-workers=1 --stacktrace
-        
-        echo "🔨 Building Debug APK..."
-        ./gradlew assembleDebug --no-daemon --no-parallel --max-workers=1 --stacktrace --info
-        
-        echo "🔨 Building Release APK..."
-        ./gradlew assembleRelease --no-daemon --no-parallel --max-workers=1 --stacktrace --info
-        
-        # Find the built APKs
-        echo "📱 Locating built APKs..."
-        find . -name "*.apk" -type f | while read apk; do
-          echo "Found APK: $apk"
-          ls -lah "$apk"
-        done
-        
-    - name: Upload APKs
-      run: |
-        echo "📤 Preparing APK uploads..."
-        
-        # Find all APKs
-        DEBUG_APK=$(find . -path "*/debug/*.apk" -type f | head -1)
-        RELEASE_APK=$(find . -path "*/release/*.apk" -type f | head -1)
-        
-        echo "Debug APK: $DEBUG_APK"
-        echo "Release APK: $RELEASE_APK"
-        
-        # Create upload directory
-        mkdir -p upload_apks
-        
-        if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
-          cp "$DEBUG_APK" upload_apks/knets-jr-auto-enable-debug.apk
-          echo "✅ Debug APK prepared for upload"
-        fi
-        
-        if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
-          cp "$RELEASE_APK" upload_apks/knets-jr-auto-enable-release.apk
-          echo "✅ Release APK prepared for upload"
-        fi
-        
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+      
+    - name: Clean project
+      run: ./gradlew clean --stacktrace
+      
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --stacktrace --info
+      
+    - name: Build Release APK  
+      run: ./gradlew assembleRelease --stacktrace --info
+      
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
-      if: hashFiles('upload_apks/knets-jr-auto-enable-debug.apk') != ''
       with:
-        name: knets-jr-auto-enable-debug-apk
-        path: upload_apks/knets-jr-auto-enable-debug.apk
+        name: knets-jr-debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
         
     - name: Upload Release APK
       uses: actions/upload-artifact@v4  
-      if: hashFiles('upload_apks/knets-jr-auto-enable-release.apk') != ''
       with:
-        name: knets-jr-auto-enable-release-apk
-        path: upload_apks/knets-jr-auto-enable-release.apk
-        
-    - name: Build Summary
-      run: |
-        echo "🏗️ BUILD COMPLETED SUCCESSFULLY"
-        echo "==============================="
-        echo ""
-        echo "📦 PACKAGE USED: ${{ github.event.inputs.package_name }}"
-        echo ""
-        echo "📱 APK FEATURES:"
-        echo "   ✅ Auto-enable permissions (phone, location, background, notifications)"
-        echo "   ✅ System-level network controls (WiFi/mobile data)"  
-        echo "   ✅ Seamless location tracking (GPS + Network fallback)"
-        echo "   ✅ Device lock functionality (DevicePolicyManager)"
-        echo "   ✅ Secret code device admin protection"
-        echo ""
-        echo "🎯 ANDROID COMPATIBILITY:"
-        echo "   ✅ Android 6.0+ (API 23) - Minimum supported"
-        echo "   ✅ Android 13+ (API 33) - Primary target"
-        echo "   ✅ Android 14 (API 34) - Latest target version"
-        echo ""
-        echo "📊 FINAL APK FILES:"
-        ls -lah upload_apks/ 2>/dev/null || echo "No APKs found in upload directory"
-        echo ""
-        echo "🚀 Auto-enable permissions APK ready for deployment!"
+        name: knets-jr-release-apk
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
