@@ -90,6 +90,19 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // Check if this is an auto-start (background launch)
+        Intent intent = getIntent();
+        boolean autoStart = intent.getBooleanExtra("auto_start", false);
+        
+        if (autoStart) {
+            Log.d(TAG, "Auto-start detected - initializing background services without UI");
+            initializeBackgroundServices();
+            
+            // Finish activity immediately for background operation
+            finish();
+            return;
+        }
+        
         // Android 13+ security initialization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             setupAndroid13Compatibility();
@@ -204,6 +217,51 @@ public class MainActivity extends AppCompatActivity {
                 .build();
     }
     
+    /**
+     * Initialize background services without UI for auto-start functionality
+     */
+    private void initializeBackgroundServices() {
+        Log.d(TAG, "Initializing background services for auto-start");
+        
+        // Initialize core services
+        preferences = getSharedPreferences("knets_jr", Context.MODE_PRIVATE);
+        
+        // Check if setup was completed
+        boolean workflowCompleted = preferences.getBoolean("workflow_completed", false);
+        
+        if (workflowCompleted) {
+            Log.d(TAG, "Setup completed - starting polling service");
+            
+            // Get stored device IMEI
+            String storedImei = preferences.getString("device_imei", "");
+            if (storedImei.isEmpty()) {
+                // Fallback to Android ID
+                storedImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+                preferences.edit()
+                    .putString("device_imei", storedImei)
+                    .apply();
+                Log.d(TAG, "Using Android ID for background service: " + storedImei.substring(0, Math.min(8, storedImei.length())) + "...");
+            }
+            
+            // Start polling service
+            Intent pollingIntent = new Intent(this, ServerPollingService.class);
+            pollingIntent.putExtra("auto_start", true);
+            
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(pollingIntent);
+                } else {
+                    startService(pollingIntent);
+                }
+                Log.d(TAG, "Background polling service started successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Error starting background polling service", e);
+            }
+        } else {
+            Log.d(TAG, "Setup not completed - background service not started");
+        }
+    }
+    
     private void loadStoredData() {
         storedParentCode = preferences.getString("parent_code", "");
         storedSecretCode = preferences.getString("secret_code", "");
@@ -217,7 +275,11 @@ public class MainActivity extends AppCompatActivity {
         updateCurrentStep();
         
         // Get device IMEI - request permission if needed (but don't require it for Step 1)
-        requestImeiPermissionAndGet();
+        // TEMPORARILY DISABLED: requestImeiPermissionAndGet(); // Disabled to test polling service
+        
+        // Set Android ID as fallback for testing
+        deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        Log.d(TAG, "Using Android ID for testing: " + (deviceImei != null ? deviceImei.substring(0, Math.min(8, deviceImei.length())) + "..." : "null"));
         
         Log.d(TAG, "Loaded state - Parent Code Verified: " + (parentCodeVerified ? "✓" : "✗") + 
                " Secret Code Verified: " + (secretCodeVerified ? "✓" : "✗") + 
@@ -772,6 +834,9 @@ public class MainActivity extends AppCompatActivity {
                 "• Screen time monitoring\n" +
                 "• App usage tracking\n\n" +
                 "The app will run in the background and automatically respond to parent requests.");
+        
+        // Update device information display
+        updateDeviceInfo();
     }
     
     private void requestImeiPermissionAndGet() {
@@ -1009,6 +1074,11 @@ public class MainActivity extends AppCompatActivity {
                 showToast("Location permissions are required for GPS tracking");
             }
         } else if (requestCode == PHONE_STATE_PERMISSION_REQUEST) {
+            // TEMPORARILY DISABLED IMEI COLLECTION FOR TESTING
+            Log.d(TAG, "📱 IMEI permission callback - DISABLED for polling service testing");
+            showToast("Using Android ID for testing");
+            
+            /* DISABLED FOR TESTING - IMEI COLLECTION
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "📱 READ_PHONE_STATE permission granted! Collecting real IMEI...");
                 collectDeviceImei();
@@ -1028,6 +1098,7 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "📱 READ_PHONE_STATE permission denied, keeping Android ID");
                 showToast("Using device ID for identification");
             }
+            */
         }
     }
     
