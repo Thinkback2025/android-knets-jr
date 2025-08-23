@@ -282,8 +282,10 @@ public class MainActivity extends AppCompatActivity {
                 break;
                 
             case 4:
+                tvStep.setText("Device Registration Complete");
+                tvStatus.setText("✅ Knets Jr setup completed successfully!");
                 showCompletedState();
-                break;
+                return; // Don't update progress bar or step text below
         }
         
         tvStep.setText(stepText);
@@ -639,35 +641,76 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void collectDeviceImei() {
+        Log.d(TAG, "🔍 Starting IMEI collection process...");
+        Log.d(TAG, "Android Version: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+        Log.d(TAG, "Device Model: " + Build.MODEL + " by " + Build.MANUFACTURER);
+        
         try {
             TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
             if (telephonyManager != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Android 8+ method
+                Log.d(TAG, "TelephonyManager available, attempting IMEI collection...");
+                
+                // Try multiple methods for different Android versions
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Android 10+ (API 29+) - More restrictive
+                    Log.d(TAG, "Using Android 10+ IMEI method");
+                    try {
+                        deviceImei = telephonyManager.getImei();
+                        Log.d(TAG, "getImei() result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
+                    } catch (SecurityException e) {
+                        Log.e(TAG, "SecurityException on getImei(): " + e.getMessage());
+                    }
+                    
+                    if (deviceImei == null || deviceImei.isEmpty()) {
+                        try {
+                            deviceImei = telephonyManager.getImei(0);
+                            Log.d(TAG, "getImei(0) result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
+                        } catch (Exception e) {
+                            Log.e(TAG, "Exception on getImei(0): " + e.getMessage());
+                        }
+                    }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Android 8-9 (API 26-28)
+                    Log.d(TAG, "Using Android 8-9 IMEI method");
                     deviceImei = telephonyManager.getImei();
                     if (deviceImei == null || deviceImei.isEmpty()) {
-                        // Try slot 0 if getImei() returns null
                         deviceImei = telephonyManager.getImei(0);
                     }
                 } else {
-                    // Pre-Android 8 method
+                    // Pre-Android 8 (API < 26)
+                    Log.d(TAG, "Using legacy getDeviceId() method");
                     deviceImei = telephonyManager.getDeviceId();
                 }
                 
-                if (deviceImei != null && !deviceImei.isEmpty() && deviceImei.length() >= 14) {
-                    Log.d(TAG, "✅ Real IMEI collected: " + deviceImei.substring(0, 4) + "****");
-                    return;
+                // Validate IMEI
+                if (deviceImei != null && !deviceImei.isEmpty()) {
+                    Log.d(TAG, "Raw device identifier: " + deviceImei.substring(0, Math.min(8, deviceImei.length())) + "...");
+                    Log.d(TAG, "Identifier length: " + deviceImei.length() + " characters");
+                    
+                    if (deviceImei.length() >= 14 && deviceImei.matches("\\d{14,15}")) {
+                        Log.d(TAG, "✅ Valid IMEI collected: " + deviceImei.substring(0, 4) + "****");
+                        return;
+                    } else if (deviceImei.length() >= 14) {
+                        Log.d(TAG, "✅ Device identifier collected (may be IMEI): " + deviceImei.substring(0, 4) + "****");
+                        return;
+                    } else {
+                        Log.d(TAG, "❌ Identifier too short to be IMEI: " + deviceImei.length() + " chars");
+                    }
                 }
+            } else {
+                Log.e(TAG, "TelephonyManager is null - device may not support telephony");
             }
         } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException collecting IMEI", e);
+            Log.e(TAG, "SecurityException collecting device identifier", e);
         } catch (Exception e) {
-            Log.e(TAG, "Exception collecting IMEI", e);
+            Log.e(TAG, "Exception collecting device identifier", e);
         }
         
-        // Fallback to Android ID if IMEI collection fails
-        deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-        Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + deviceImei.substring(0, 4) + "****");
+        // Fallback to Android ID
+        String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        deviceImei = androidId;
+        Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + androidId.substring(0, Math.min(8, androidId.length())) + "****");
+        Log.d(TAG, "Note: Android 10+ restricts IMEI access even with permissions");
     }
     
     private void ensureDeviceIdentifier() {
@@ -677,6 +720,11 @@ public class MainActivity extends AppCompatActivity {
                     == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Permission available, attempting to upgrade from Android ID to IMEI");
                 collectDeviceImei();
+                // If we successfully got real IMEI, update server
+                if (deviceImei != null && deviceImei.length() >= 14 && !storedParentCode.isEmpty()) {
+                    Log.d(TAG, "Successfully upgraded to real IMEI, updating server");
+                    updateDeviceImeiOnServer();
+                }
             }
         }
     }
@@ -808,11 +856,17 @@ public class MainActivity extends AppCompatActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "📱 READ_PHONE_STATE permission granted! Collecting real IMEI...");
                 collectDeviceImei();
-                showToast("Device IMEI updated for security!");
                 
-                // Update server with real IMEI if we have parent code
-                if (!storedParentCode.isEmpty()) {
+                // Update UI to show real IMEI
+                updateDeviceInfo();
+                
+                // Update server with real IMEI if we have parent code and it's a real IMEI
+                if (!storedParentCode.isEmpty() && deviceImei != null && deviceImei.length() >= 14) {
+                    Log.d(TAG, "Updating server with real IMEI after permission grant");
                     updateDeviceImeiOnServer();
+                    showToast("Device IMEI updated for security!");
+                } else {
+                    Log.d(TAG, "No parent code or still using Android ID, skipping server update");
                 }
             } else {
                 Log.d(TAG, "📱 READ_PHONE_STATE permission denied, keeping Android ID");
