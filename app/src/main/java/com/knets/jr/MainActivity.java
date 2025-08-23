@@ -15,7 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
-import android.telephony.TelephonyManager;
+
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -56,11 +56,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "KnetsJr";
     private static final int DEVICE_ADMIN_REQUEST = 1001;
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
-    private static final int PHONE_STATE_PERMISSION_REQUEST = 1003;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1004;
     
-    private EditText etParentCode, etSecretCode;
-    private TextView tvSecretCodeLabel;
+    private EditText etParentCode, etSecretCode, etDeviceImei;
+    private TextView tvSecretCodeLabel, tvImeiLabel, tvImeiInstructions;
     private Button btnConnect, btnEnableDeviceAdmin, btnEnableLocation;
     private TextView tvStatus, tvStep, tvDeviceInfo;
     private ProgressBar progressBar;
@@ -74,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     
     // 3-Step Workflow States
     private boolean parentCodeVerified = false;
+    private boolean imeiSaved = false;
     private boolean secretCodeVerified = false;
     private boolean deviceAdminEnabled = false;
     private boolean workflowCompleted = false;
@@ -107,7 +107,10 @@ public class MainActivity extends AppCompatActivity {
     private void initializeViews() {
         etParentCode = findViewById(R.id.etParentCode);
         etSecretCode = findViewById(R.id.etSecretCode);
+        etDeviceImei = findViewById(R.id.etDeviceImei);
         tvSecretCodeLabel = findViewById(R.id.tvSecretCodeLabel);
+        tvImeiLabel = findViewById(R.id.tvImeiLabel);
+        tvImeiInstructions = findViewById(R.id.tvImeiInstructions);
         btnConnect = findViewById(R.id.btnConnect);
         btnEnableDeviceAdmin = findViewById(R.id.btnEnableDeviceAdmin);
         btnEnableLocation = findViewById(R.id.btnEnableLocation);
@@ -149,6 +152,27 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         
+        // IMEI input validation (smart UI behavior)
+        etDeviceImei.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (s.length() == 15) {
+                    // Auto-advance when 15-digit IMEI is complete
+                    btnConnect.setEnabled(true);
+                    btnConnect.setText("Save IMEI");
+                } else if (s.length() > 0) {
+                    btnConnect.setEnabled(false);
+                    btnConnect.setText("Enter 15-digit IMEI");
+                }
+            }
+        });
+
         // Secret code input validation (smart UI behavior)
         etSecretCode.addTextChangedListener(new TextWatcher() {
             @Override
@@ -183,6 +207,7 @@ public class MainActivity extends AppCompatActivity {
         storedParentCode = preferences.getString("parent_code", "");
         storedSecretCode = preferences.getString("secret_code", "");
         parentCodeVerified = preferences.getBoolean("parent_code_verified", false);
+        imeiSaved = preferences.getBoolean("imei_saved", false);
         secretCodeVerified = preferences.getBoolean("secret_code_verified", false);
         deviceAdminEnabled = devicePolicyManager.isAdminActive(deviceAdminReceiver);
         workflowCompleted = preferences.getBoolean("workflow_completed", false);
@@ -190,8 +215,7 @@ public class MainActivity extends AppCompatActivity {
         // Determine current step based on state
         updateCurrentStep();
         
-        // Get device IMEI - request permission if needed
-        requestImeiPermissionAndGet();
+        // Manual IMEI input only - no auto-fetching
         
         Log.d(TAG, "Loaded state - Parent Code Verified: " + (parentCodeVerified ? "✓" : "✗") + 
                " Secret Code Verified: " + (secretCodeVerified ? "✓" : "✗") + 
@@ -199,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void updateCurrentStep() {
-        if (!parentCodeVerified) currentStep = 1;
+        if (!parentCodeVerified || !imeiSaved) currentStep = 1; // Step 1: Parent code + IMEI
         else if (!secretCodeVerified) currentStep = 2;
         else if (!deviceAdminEnabled) currentStep = 3;
         else currentStep = 4; // Completed
@@ -216,8 +240,19 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         
-        // Show secret code input after parent code verification
-        if (parentCodeVerified && !secretCodeVerified) {
+        // Show IMEI input after parent code verification but before completion
+        if (parentCodeVerified && !imeiSaved) {
+            tvImeiLabel.setVisibility(View.VISIBLE);
+            tvImeiInstructions.setVisibility(View.VISIBLE);
+            etDeviceImei.setVisibility(View.VISIBLE);
+        } else if (imeiSaved) {
+            tvImeiLabel.setVisibility(View.GONE);
+            tvImeiInstructions.setVisibility(View.GONE);
+            etDeviceImei.setVisibility(View.GONE);
+        }
+        
+        // Show secret code input after parent code + IMEI completion
+        if (parentCodeVerified && imeiSaved && !secretCodeVerified) {
             tvSecretCodeLabel.setVisibility(View.VISIBLE);
             etSecretCode.setVisibility(View.VISIBLE);
         } else if (secretCodeVerified) {
@@ -235,11 +270,19 @@ public class MainActivity extends AppCompatActivity {
         
         switch (currentStep) {
             case 1:
-                stepText += "Parent Code Verification";
-                statusText = "Enter your 10-digit parent code to connect with Knets dashboard";
-                btnConnect.setVisibility(View.VISIBLE);
-                btnConnect.setText("Verify Parent Code");
-                btnConnect.setEnabled(etParentCode.getText().length() == 10);
+                if (!parentCodeVerified) {
+                    stepText += "Parent Code Verification";
+                    statusText = "Enter your 10-digit parent code to connect with Knets dashboard";
+                    btnConnect.setVisibility(View.VISIBLE);
+                    btnConnect.setText("Verify Parent Code");
+                    btnConnect.setEnabled(etParentCode.getText().length() == 10);
+                } else if (!imeiSaved) {
+                    stepText += "Device IMEI Registration";
+                    statusText = "Enter your device IMEI number for security identification";
+                    btnConnect.setVisibility(View.VISIBLE);
+                    btnConnect.setText("Save IMEI");
+                    btnConnect.setEnabled(etDeviceImei.getText().length() == 15);
+                }
                 break;
                 
             case 2:
@@ -301,19 +344,31 @@ public class MainActivity extends AppCompatActivity {
     
     private void handleConnectStep() {
         if (currentStep == 1) {
-            // Step 1: Verify parent code
-            String code = etParentCode.getText().toString().trim();
-            if (code.length() != 10) {
-                showToast("Please enter a 10-digit parent code");
-                return;
+            if (!parentCodeVerified) {
+                // Step 1a: Verify parent code
+                String code = etParentCode.getText().toString().trim();
+                if (code.length() != 10) {
+                    showToast("Please enter a 10-digit parent code");
+                    return;
+                }
+                
+                storedParentCode = code;
+                preferences.edit()
+                        .putString("parent_code", code)
+                        .apply();
+                
+                verifyCodeWithServer();
+                
+            } else if (!imeiSaved) {
+                // Step 1b: Save IMEI after parent code verification
+                String imei = etDeviceImei.getText().toString().trim();
+                if (imei.length() != 15) {
+                    showToast("Please enter a valid 15-digit IMEI number");
+                    return;
+                }
+                
+                saveImeiWithServer(imei);
             }
-            
-            storedParentCode = code;
-            preferences.edit()
-                    .putString("parent_code", code)
-                    .apply();
-            
-            verifyCodeWithServer();
             
         } else if (currentStep == 2) {
             // Step 2: Verify secret code
@@ -338,14 +393,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         
-        // Ensure we have the best possible device identifier before proceeding
-        ensureDeviceIdentifier();
-        
-        showProgress("Verifying code...");
+        showProgress("Verifying parent code...");
         
         JsonObject jsonBody = new JsonObject();
         jsonBody.addProperty("parentCode", storedParentCode);
-        jsonBody.addProperty("deviceImei", deviceImei);
+        // Only send parent code for verification, IMEI comes later
         
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json"), 
@@ -388,18 +440,41 @@ public class MainActivity extends AppCompatActivity {
                         try {
                             JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
                             boolean valid = jsonResponse.get("valid").getAsBoolean();
+                            String message = jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "";
                             
                             if (valid) {
-                                parentCodeVerified = true;
-                                preferences.edit()
-                                        .putBoolean("parent_code_verified", true)
-                                        .apply();
+                                boolean requiresImei = jsonResponse.has("requiresImei") && 
+                                                     jsonResponse.get("requiresImei").getAsBoolean();
                                 
-                                showToast("Parent code verification successful");
-                                updateCurrentStep();
-                                updateUI();
+                                if (requiresImei) {
+                                    // Parent code verified, now need IMEI
+                                    showToast("✅ Parent code verified! Please enter device IMEI.");
+                                    
+                                    parentCodeVerified = true;
+                                    preferences.edit()
+                                            .putBoolean("parent_code_verified", true)
+                                            .apply();
+                                    
+                                    Log.d(TAG, "✅ Parent code verified, requesting IMEI");
+                                    updateUI(); // This will show IMEI input fields
+                                } else {
+                                    // Both parent code and IMEI saved successfully
+                                    showToast("✅ " + message);
+                                    
+                                    parentCodeVerified = true;
+                                    imeiSaved = true;
+                                    preferences.edit()
+                                            .putBoolean("parent_code_verified", true)
+                                            .putBoolean("imei_saved", true)
+                                            .apply();
+                                    
+                                    Log.d(TAG, "✅ Parent code and IMEI saved successfully");
+                                    updateCurrentStep();
+                                    updateUI();
+                                }
                             } else {
-                                showToast("Invalid parent code. Please check and try again.");
+                                showToast("❌ " + message);
+                                Log.e(TAG, "❌ Parent code verification failed: " + message);
                             }
                         } catch (Exception e) {
                             showToast("Error processing server response");
@@ -407,6 +482,85 @@ public class MainActivity extends AppCompatActivity {
                         }
                     } else {
                         showToast("Code verification failed: " + response.message());
+                    }
+                });
+            }
+        });
+    }
+    
+    private void saveImeiWithServer(String imei) {
+        if (storedParentCode.isEmpty()) {
+            showToast("No parent code found");
+            return;
+        }
+        
+        showProgress("Saving device IMEI...");
+        
+        JsonObject jsonBody = new JsonObject();
+        jsonBody.addProperty("parentCode", storedParentCode);
+        jsonBody.addProperty("deviceImei", imei);
+        
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json"), 
+                jsonBody.toString()
+        );
+        
+        String serverUrl = getServerBaseUrl() + "/api/knets-jr/verify-code";
+        Log.d(TAG, "Saving IMEI with URL: " + serverUrl);
+        Log.d(TAG, "Request body: " + jsonBody.toString());
+        
+        Request request = new Request.Builder()
+                .url(serverUrl)
+                .post(body)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                runOnUiThread(() -> {
+                    hideProgress();
+                    String errorMsg = "Network error: " + e.getMessage();
+                    showToast(errorMsg);
+                    Log.e(TAG, "IMEI save network failure", e);
+                });
+            }
+            
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String responseBody = response.body() != null ? response.body().string() : "";
+                
+                runOnUiThread(() -> {
+                    hideProgress();
+                    
+                    if (response.isSuccessful()) {
+                        try {
+                            JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
+                            boolean valid = jsonResponse.get("valid").getAsBoolean();
+                            String message = jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "";
+                            
+                            if (valid) {
+                                showToast("✅ " + message);
+                                
+                                // Mark IMEI as saved and advance to next step
+                                imeiSaved = true;
+                                preferences.edit()
+                                        .putBoolean("imei_saved", true)
+                                        .apply();
+                                
+                                Log.d(TAG, "✅ Device IMEI saved successfully");
+                                updateCurrentStep();
+                                updateUI();
+                            } else {
+                                showToast("❌ " + message);
+                                Log.e(TAG, "❌ IMEI save failed: " + message);
+                            }
+                        } catch (Exception e) {
+                            showToast("Error processing server response");
+                            Log.e(TAG, "Error parsing IMEI save response", e);
+                        }
+                    } else {
+                        showToast("IMEI save failed: " + response.message());
                     }
                 });
             }
@@ -584,12 +738,7 @@ public class MainActivity extends AppCompatActivity {
         Intent pollingIntent = new Intent(this, ServerPollingService.class);
         startForegroundService(pollingIntent);
         
-        // Store device IMEI for services
-        if (!deviceImei.isEmpty()) {
-            preferences.edit()
-                    .putString("device_imei", deviceImei)
-                    .apply();
-        }
+        // Manual IMEI stored during Step 1, no auto-fetching
         
         workflowCompleted = true;
         preferences.edit()
@@ -618,162 +767,13 @@ public class MainActivity extends AppCompatActivity {
                 "The app will run in the background and automatically respond to parent requests.");
     }
     
-    private void requestImeiPermissionAndGet() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
-                == PackageManager.PERMISSION_GRANTED) {
-            // Permission already granted, get IMEI immediately
-            collectDeviceImei();
-        } else {
-            // Permission not granted, use Android ID temporarily and request permission
-            deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-            Log.d(TAG, "Using temporary Android ID, requesting READ_PHONE_STATE permission immediately");
-            
-            // Show rationale to user
-            showToast("Requesting device permission for security identification");
-            
-            // Request permission immediately for better user experience
-            ActivityCompat.requestPermissions(this, 
-                    new String[]{Manifest.permission.READ_PHONE_STATE}, 
-                    PHONE_STATE_PERMISSION_REQUEST);
-        }
-        
-        Log.d(TAG, "Initial Device ID: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
-    }
+    // Auto-fetching IMEI functionality removed - manual input only
     
-    private void collectDeviceImei() {
-        Log.d(TAG, "🔍 Starting IMEI collection process...");
-        Log.d(TAG, "Android Version: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
-        Log.d(TAG, "Device Model: " + Build.MODEL + " by " + Build.MANUFACTURER);
-        
-        try {
-            TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-            if (telephonyManager != null) {
-                Log.d(TAG, "TelephonyManager available, attempting IMEI collection...");
-                
-                // Try multiple methods for different Android versions
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // Android 10+ (API 29+) - More restrictive
-                    Log.d(TAG, "Using Android 10+ IMEI method");
-                    try {
-                        deviceImei = telephonyManager.getImei();
-                        Log.d(TAG, "getImei() result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
-                    } catch (SecurityException e) {
-                        Log.e(TAG, "SecurityException on getImei(): " + e.getMessage());
-                    }
-                    
-                    if (deviceImei == null || deviceImei.isEmpty()) {
-                        try {
-                            deviceImei = telephonyManager.getImei(0);
-                            Log.d(TAG, "getImei(0) result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
-                        } catch (Exception e) {
-                            Log.e(TAG, "Exception on getImei(0): " + e.getMessage());
-                        }
-                    }
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Android 8-9 (API 26-28)
-                    Log.d(TAG, "Using Android 8-9 IMEI method");
-                    deviceImei = telephonyManager.getImei();
-                    if (deviceImei == null || deviceImei.isEmpty()) {
-                        deviceImei = telephonyManager.getImei(0);
-                    }
-                } else {
-                    // Pre-Android 8 (API < 26)
-                    Log.d(TAG, "Using legacy getDeviceId() method");
-                    deviceImei = telephonyManager.getDeviceId();
-                }
-                
-                // Validate IMEI
-                if (deviceImei != null && !deviceImei.isEmpty()) {
-                    Log.d(TAG, "Raw device identifier: " + deviceImei.substring(0, Math.min(8, deviceImei.length())) + "...");
-                    Log.d(TAG, "Identifier length: " + deviceImei.length() + " characters");
-                    
-                    if (deviceImei.length() >= 14 && deviceImei.matches("\\d{14,15}")) {
-                        Log.d(TAG, "✅ Valid IMEI collected: " + deviceImei.substring(0, 4) + "****");
-                        return;
-                    } else if (deviceImei.length() >= 14) {
-                        Log.d(TAG, "✅ Device identifier collected (may be IMEI): " + deviceImei.substring(0, 4) + "****");
-                        return;
-                    } else {
-                        Log.d(TAG, "❌ Identifier too short to be IMEI: " + deviceImei.length() + " chars");
-                    }
-                }
-            } else {
-                Log.e(TAG, "TelephonyManager is null - device may not support telephony");
-            }
-        } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException collecting device identifier", e);
-        } catch (Exception e) {
-            Log.e(TAG, "Exception collecting device identifier", e);
-        }
-        
-        // Fallback to Android ID
-        String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-        deviceImei = androidId;
-        Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + androidId.substring(0, Math.min(8, androidId.length())) + "****");
-        Log.d(TAG, "Note: Android 10+ restricts IMEI access even with permissions");
-    }
+    // Auto-fetching collectDeviceImei() method removed - manual input only
     
-    private void ensureDeviceIdentifier() {
-        // Try to get real IMEI if we only have Android ID
-        if (deviceImei != null && deviceImei.length() < 14) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
-                    == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "Permission available, attempting to upgrade from Android ID to IMEI");
-                collectDeviceImei();
-                // If we successfully got real IMEI, update server
-                if (deviceImei != null && deviceImei.length() >= 14 && !storedParentCode.isEmpty()) {
-                    Log.d(TAG, "Successfully upgraded to real IMEI, updating server");
-                    updateDeviceImeiOnServer();
-                }
-            }
-        }
-    }
+    // Auto-fetching ensureDeviceIdentifier() method removed - manual input only
     
-    private void updateDeviceImeiOnServer() {
-        if (deviceImei == null || deviceImei.isEmpty() || storedParentCode.isEmpty()) {
-            return;
-        }
-        
-        // Only send real IMEI to server (skip Android ID updates)
-        if (deviceImei.length() < 14) {
-            Log.d(TAG, "Skipping Android ID update, waiting for real IMEI");
-            return;
-        }
-        
-        // Update server with real IMEI if we have it
-        JsonObject jsonBody = new JsonObject();
-        jsonBody.addProperty("imei", deviceImei);
-        jsonBody.addProperty("parentCode", storedParentCode);
-        
-        RequestBody body = RequestBody.create(
-                MediaType.parse("application/json"), 
-                jsonBody.toString()
-        );
-        
-        String serverUrl = getServerBaseUrl() + "/api/knets-jr/update-imei";
-        
-        Request request = new Request.Builder()
-                .url(serverUrl)
-                .post(body)
-                .build();
-        
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e(TAG, "Failed to update IMEI on server", e);
-            }
-            
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                if (response.isSuccessful()) {
-                    Log.d(TAG, "✅ Real IMEI updated on server successfully");
-                    runOnUiThread(() -> {
-                        updateDeviceInfo(); // Refresh UI to show real IMEI
-                    });
-                }
-            }
-        });
-    }
+    // Auto-fetching updateDeviceImeiOnServer() method removed - manual input only
     
     private boolean hasLocationPermissions() {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
@@ -852,27 +852,8 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 showToast("Location permissions are required for GPS tracking");
             }
-        } else if (requestCode == PHONE_STATE_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "📱 READ_PHONE_STATE permission granted! Collecting real IMEI...");
-                collectDeviceImei();
-                
-                // Update UI to show real IMEI
-                updateDeviceInfo();
-                
-                // Update server with real IMEI if we have parent code and it's a real IMEI
-                if (!storedParentCode.isEmpty() && deviceImei != null && deviceImei.length() >= 14) {
-                    Log.d(TAG, "Updating server with real IMEI after permission grant");
-                    updateDeviceImeiOnServer();
-                    showToast("Device IMEI updated for security!");
-                } else {
-                    Log.d(TAG, "No parent code or still using Android ID, skipping server update");
-                }
-            } else {
-                Log.d(TAG, "📱 READ_PHONE_STATE permission denied, keeping Android ID");
-                showToast("Using device ID for identification");
-            }
         }
+        // Phone state permission request removed - manual IMEI input only
     }
     
     /**

@@ -92,6 +92,44 @@
             android:textStyle="bold"
             android:digits="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" />
 
+        <!-- Device IMEI Input Section (Hidden initially) -->
+        <TextView
+            android:id="@+id/tvImeiLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="Device IMEI:"
+            android:textColor="@color/text_color"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvImeiInstructions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="📱 To find your IMEI number, dial *#06# on your phone\n💡 Enter the 15-digit number displayed"
+            android:textColor="@color/text_color"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/etDeviceImei"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/edit_text_background"
+            android:hint="Enter 15-digit IMEI"
+            android:inputType="number"
+            android:maxLength="15"
+            android:padding="16dp"
+            android:textColor="@color/text_color"
+            android:textColorHint="@color/hint_color"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <!-- Secret Code Input Section (Hidden initially) -->
         <TextView
             android:id="@+id/tvSecretCodeLabel"
