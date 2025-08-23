@@ -262,8 +262,8 @@ public class LocationService extends Service implements LocationListener {
             return customUrl;
         }
         
-        // Default production URL (replace with actual production domain)
-        return "https://knets-production-domain.com";
+        // Current Replit development URL
+        return "https://109f494a-e49e-4a8a-973f-659f67493858-00-23mfa5oss8rxi.janeway.replit.dev";
     }
     
     @Override
