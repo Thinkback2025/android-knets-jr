@@ -52,6 +52,13 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
+// Additional imports for auto-enable permissions
+import android.app.NotificationManager;
+import android.os.PowerManager;
+import android.net.Uri;
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "KnetsJr";
     private static final int DEVICE_ADMIN_REQUEST = 1001;
@@ -90,19 +97,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Check if this is an auto-start (background launch)
-        Intent intent = getIntent();
-        boolean autoStart = intent.getBooleanExtra("auto_start", false);
-        
-        if (autoStart) {
-            Log.d(TAG, "Auto-start detected - initializing background services without UI");
-            initializeBackgroundServices();
-            
-            // Finish activity immediately for background operation
-            finish();
-            return;
-        }
-        
         // Android 13+ security initialization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             setupAndroid13Compatibility();
@@ -110,13 +104,242 @@ public class MainActivity extends AppCompatActivity {
         
         setContentView(R.layout.activity_main);
         
+        // CRITICAL: Auto-enable essential permissions during installation
+        autoEnableEssentialPermissions();
+        
         initializeViews();
         initializeServices();
         loadStoredData();
         updateUI();
         
+        // CRITICAL: Handle device lock commands from ServerPollingService
+        handleIncomingCommands();
+        
         Log.d(TAG, "MainActivity created - Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
     }
+    
+    /**
+     * AUTO-ENABLE ESSENTIAL PERMISSIONS: Phone calls, location, background running, notifications
+     */
+    private void autoEnableEssentialPermissions() {
+        Log.d(TAG, "🚀 AUTO-ENABLING ESSENTIAL PERMISSIONS for Knets Jr installation");
+        
+        // List of critical permissions to auto-enable
+        List<String> essentialPermissions = new ArrayList<>();
+        
+        // Phone call permissions
+        essentialPermissions.add(android.Manifest.permission.CALL_PHONE);
+        essentialPermissions.add(android.Manifest.permission.READ_CALL_LOG);
+        essentialPermissions.add(android.Manifest.permission.WRITE_CALL_LOG);
+        
+        // Location permissions
+        essentialPermissions.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+        essentialPermissions.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+        essentialPermissions.add(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        
+        // Phone state permissions
+        essentialPermissions.add(android.Manifest.permission.READ_PHONE_STATE);
+        
+        // Notification permissions (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            essentialPermissions.add(android.Manifest.permission.POST_NOTIFICATIONS);
+        }
+        
+        // Check and request permissions
+        List<String> permissionsToRequest = new ArrayList<>();
+        for (String permission : essentialPermissions) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(permission);
+                Log.d(TAG, "Permission needed: " + permission);
+            } else {
+                Log.d(TAG, "✅ Permission already granted: " + permission);
+            }
+        }
+        
+        // Request missing permissions
+        if (!permissionsToRequest.isEmpty()) {
+            Log.d(TAG, "Requesting " + permissionsToRequest.size() + " essential permissions");
+            ActivityCompat.requestPermissions(this, 
+                permissionsToRequest.toArray(new String[0]), 
+                PERMISSION_REQUEST_CODE);
+        } else {
+            Log.d(TAG, "✅ All essential permissions already granted");
+            autoEnableBackgroundRunning();
+        }
+    }
+    
+    /**
+     * AUTO-ENABLE BACKGROUND RUNNING: Battery optimization bypass
+     */
+    private void autoEnableBackgroundRunning() {
+        Log.d(TAG, "🔋 AUTO-ENABLING BACKGROUND RUNNING (battery optimization bypass)");
+        
+        try {
+            // Method 1: Request to ignore battery optimizations
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+                Log.d(TAG, "✅ Battery optimization bypass requested");
+            } else {
+                Log.d(TAG, "✅ Battery optimization already bypassed");
+            }
+            
+            // Method 2: Ensure notification access for background running
+            enableNotificationAccess();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to enable background running", e);
+        }
+    }
+    
+    /**
+     * AUTO-ENABLE NOTIFICATION ACCESS
+     */
+    private void enableNotificationAccess() {
+        Log.d(TAG, "🔔 AUTO-ENABLING NOTIFICATION ACCESS");
+        
+        try {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                // Check if notifications are enabled
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !notificationManager.areNotificationsEnabled()) {
+                    // Guide user to notification settings
+                    Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    startActivity(intent);
+                    Log.d(TAG, "✅ Notification settings opened for enabling");
+                } else {
+                    Log.d(TAG, "✅ Notifications already enabled");
+                }
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to enable notification access", e);
+        }
+    }
+    
+    /**
+     * HANDLE PERMISSION RESULTS: Process auto-enable permission responses
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            Log.d(TAG, "🔐 PERMISSION RESULTS: Processing auto-enable responses");
+            
+            int granted = 0;
+            int denied = 0;
+            
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "✅ GRANTED: " + permissions[i]);
+                    granted++;
+                } else {
+                    Log.w(TAG, "❌ DENIED: " + permissions[i]);
+                    denied++;
+                }
+            }
+            
+            Log.d(TAG, "📊 PERMISSION SUMMARY: " + granted + " granted, " + denied + " denied");
+            
+            // Proceed with background running setup regardless of some denials
+            autoEnableBackgroundRunning();
+            
+            // Show result to user
+            if (granted > 0) {
+                showToast("Essential permissions enabled (" + granted + "/" + permissions.length + ")");
+            } else {
+                showToast("Some permissions need manual enabling in settings");
+            }
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingCommands();
+    }
+
+    /**
+     * SYSTEM-LEVEL FIX: Handle device control commands
+     */
+    private void handleIncomingCommands() {
+        Intent intent = getIntent();
+        if (intent != null && intent.hasExtra("command")) {
+            String command = intent.getStringExtra("command");
+            Log.d(TAG, "Received command: " + command);
+            
+            switch (command) {
+                case "lock_device":
+                    executeDeviceLock();
+                    break;
+                case "unlock_device":
+                    executeDeviceUnlock();
+                    break;
+                case "enable_location":
+                    handleLocationEnableRequest();
+                    break;
+                case "disable_mobile_data":
+                    handleDisableMobileDataRequest();
+                    break;
+                case "enable_mobile_data":
+                    handleEnableMobileDataRequest();
+                    break;
+                case "disable_mobile_data":
+                    handleDisableMobileDataRequest();
+                    break;
+                case "enable_mobile_data":
+                    handleEnableMobileDataRequest();
+                    break;
+            }
+        }
+    }
+
+    /**
+     * SYSTEM-LEVEL FIX: Actual device lock implementation
+     */
+    private void executeDeviceLock() {
+        if (devicePolicyManager != null && devicePolicyManager.isAdminActive(deviceAdminReceiver)) {
+            try {
+                // CRITICAL: Actual system-level device lock
+                devicePolicyManager.lockNow();
+                Log.d(TAG, "✅ Device locked successfully by parent command");
+                showToast("Device locked by parent");
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Failed to lock device", e);
+                showToast("Lock failed - Device admin required");
+            }
+        } else {
+            Log.w(TAG, "❌ Cannot lock device - Device admin not active");
+            showToast("Device admin required for lock");
+        }
+    }
+
+    /**
+     * SYSTEM-LEVEL FIX: Device unlock implementation
+     */
+    private void executeDeviceUnlock() {
+        // Note: Android doesn't allow programmatic unlock for security
+        // This acknowledges the command and logs the request
+        Log.d(TAG, "✅ Device unlock requested - User must unlock manually");
+        showToast("Unlock requested - Enter your PIN/password");
+    }
+
+    /**
+     * SEAMLESS LOCATION: No longer needed - network location works as fallback
+     */
+    private void handleLocationEnableRequest() {
+        // No action needed - ServerPollingService handles location seamlessly
+        Log.d(TAG, "✅ Location enable request handled - Using seamless fallback");
+        showToast("Location tracking active");
+    }
+    
+    // SYSTEM-LEVEL: Network controls now handled entirely in ServerPollingService
+    // No child intervention needed - all network commands processed at system level
     
     private void initializeViews() {
         etParentCode = findViewById(R.id.etParentCode);
@@ -215,51 +438,6 @@ public class MainActivity extends AppCompatActivity {
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
-    }
-    
-    /**
-     * Initialize background services without UI for auto-start functionality
-     */
-    private void initializeBackgroundServices() {
-        Log.d(TAG, "Initializing background services for auto-start");
-        
-        // Initialize core services
-        preferences = getSharedPreferences("knets_jr", Context.MODE_PRIVATE);
-        
-        // Check if setup was completed
-        boolean workflowCompleted = preferences.getBoolean("workflow_completed", false);
-        
-        if (workflowCompleted) {
-            Log.d(TAG, "Setup completed - starting polling service");
-            
-            // Get stored device IMEI
-            String storedImei = preferences.getString("device_imei", "");
-            if (storedImei.isEmpty()) {
-                // Fallback to Android ID
-                storedImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-                preferences.edit()
-                    .putString("device_imei", storedImei)
-                    .apply();
-                Log.d(TAG, "Using Android ID for background service: " + storedImei.substring(0, Math.min(8, storedImei.length())) + "...");
-            }
-            
-            // Start polling service
-            Intent pollingIntent = new Intent(this, ServerPollingService.class);
-            pollingIntent.putExtra("auto_start", true);
-            
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(pollingIntent);
-                } else {
-                    startService(pollingIntent);
-                }
-                Log.d(TAG, "Background polling service started successfully");
-            } catch (Exception e) {
-                Log.e(TAG, "Error starting background polling service", e);
-            }
-        } else {
-            Log.d(TAG, "Setup not completed - background service not started");
-        }
     }
     
     private void loadStoredData() {
