@@ -43,6 +43,23 @@ jobs:
         target: android-34
         arch: x86_64
         
+    - name: Set up Gradle environment
+      run: |
+        echo "🔧 Configuring build environment..."
+        # Set JVM options for Gradle
+        export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=512m"
+        export _JAVA_OPTIONS="-Xmx2048m"
+        
+        # Create gradle.properties for the project
+        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" > gradle.properties
+        echo "org.gradle.daemon=false" >> gradle.properties
+        echo "org.gradle.parallel=false" >> gradle.properties
+        echo "org.gradle.workers.max=1" >> gradle.properties
+        echo "org.gradle.configureondemand=false" >> gradle.properties
+        echo "android.useAndroidX=true" >> gradle.properties
+        echo "android.enableJetifier=true" >> gradle.properties
+        echo "✅ Build environment configured"
+        
     - name: Accept Android SDK licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
@@ -107,15 +124,24 @@ jobs:
         chmod +x ./gradlew
         echo "✅ Made gradlew executable"
         
-        # Clean and build
+        # Configure Gradle for CI environment
+        mkdir -p ~/.gradle
+        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> ~/.gradle/gradle.properties
+        echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
+        echo "org.gradle.parallel=false" >> ~/.gradle/gradle.properties
+        echo "org.gradle.workers.max=1" >> ~/.gradle/gradle.properties
+        echo "org.gradle.configureondemand=false" >> ~/.gradle/gradle.properties
+        echo "✅ Gradle configured for CI build"
+        
+        # Clean and build with CI-optimized settings
         echo "🧹 Cleaning project..."
-        ./gradlew clean --stacktrace
+        ./gradlew clean --no-daemon --no-parallel --max-workers=1 --stacktrace
         
         echo "🔨 Building Debug APK..."
-        ./gradlew assembleDebug --stacktrace --info
+        ./gradlew assembleDebug --no-daemon --no-parallel --max-workers=1 --stacktrace --info
         
         echo "🔨 Building Release APK..."
-        ./gradlew assembleRelease --stacktrace --info
+        ./gradlew assembleRelease --no-daemon --no-parallel --max-workers=1 --stacktrace --info
         
         # Find the built APKs
         echo "📱 Locating built APKs..."
