@@ -1,0 +1,153 @@
+name: Build Knets Jr Android APK - Bulletproof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 34
+        target: android-34
+        arch: x86_64
+        
+    - name: Accept Android SDK licenses
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        
+    - name: Find Android project directory
+      run: |
+        echo "Finding Android project directory..."
+        
+        # Look for gradlew file to identify the Android project root
+        ANDROID_DIR=""
+        
+        # Check common directory names
+        for dir in knets-minimal-android knets-android knets-jr android app; do
+          if [ -f "$dir/gradlew" ]; then
+            ANDROID_DIR="$dir"
+            break
+          fi
+        done
+        
+        # If not found in subdirectories, check current directory
+        if [ -z "$ANDROID_DIR" ] && [ -f "./gradlew" ]; then
+          ANDROID_DIR="."
+        fi
+        
+        # If still not found, search recursively
+        if [ -z "$ANDROID_DIR" ]; then
+          ANDROID_DIR=$(find . -name "gradlew" -type f | head -1 | xargs dirname)
+        fi
+        
+        if [ -z "$ANDROID_DIR" ]; then
+          echo "ERROR: Android project with gradlew not found"
+          exit 1
+        fi
+        
+        echo "Android project found at: $ANDROID_DIR"
+        echo "ANDROID_PROJECT_DIR=$ANDROID_DIR" >> $GITHUB_ENV
+        
+    - name: Set up build environment
+      run: |
+        echo "Configuring build environment..."
+        
+        # Set global JVM options
+        export GRADLE_OPTS="-Xmx3072m -XX:MaxMetaspaceSize=768m -Dorg.gradle.daemon=false"
+        export _JAVA_OPTIONS="-Xmx3072m"
+        
+        # Create global gradle.properties
+        mkdir -p ~/.gradle
+        cat > ~/.gradle/gradle.properties << EOF
+        org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError
+        org.gradle.daemon=false
+        org.gradle.parallel=false
+        org.gradle.workers.max=1
+        org.gradle.configureondemand=false
+        org.gradle.caching=false
+        EOF
+        
+        # Set up Android SDK location
+        cd "$ANDROID_PROJECT_DIR"
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        
+        echo "Build environment configured"
+        
+    - name: Create app icons if missing
+      run: |
+        cd "$ANDROID_PROJECT_DIR"
+        
+        # Create icon directories if they don't exist
+        mkdir -p app/src/main/res/mipmap-hdpi
+        mkdir -p app/src/main/res/mipmap-mdpi  
+        mkdir -p app/src/main/res/mipmap-xhdpi
+        mkdir -p app/src/main/res/mipmap-xxhdpi
+        mkdir -p app/src/main/res/mipmap-xxxhdpi
+        
+        # Create simple PNG icons if missing
+        for density in hdpi mdpi xhdpi xxhdpi xxxhdpi; do
+          for icon in ic_launcher ic_launcher_round; do
+            icon_path="app/src/main/res/mipmap-${density}/${icon}.png"
+            if [ ! -f "$icon_path" ]; then
+              echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$icon_path"
+            fi
+          done
+        done
+        
+    - name: Make gradlew executable and build
+      run: |
+        cd "$ANDROID_PROJECT_DIR"
+        
+        # Make gradlew executable
+        chmod +x ./gradlew
+        
+        # Clean project
+        echo "Cleaning project..."
+        ./gradlew clean --no-daemon --no-parallel --max-workers=1 --stacktrace
+        
+        # Build debug APK
+        echo "Building Debug APK..."
+        ./gradlew assembleDebug --no-daemon --no-parallel --max-workers=1 --stacktrace --quiet
+        
+        # Build release APK
+        echo "Building Release APK..."
+        ./gradlew assembleRelease --no-daemon --no-parallel --max-workers=1 --stacktrace --quiet
+        
+        # Verify APKs were created
+        echo "Verifying APK creation..."
+        find . -name "*.apk" -type f | while read apk; do
+          echo "Created: $apk ($(ls -lah "$apk" | awk '{print $5}'))"
+        done
+        
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: knets-jr-debug-apk
+        path: ${{ env.ANDROID_PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+        
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4  
+      with:
+        name: knets-jr-release-apk
+        path: ${{ env.ANDROID_PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        
+    - name: Build Summary
+      run: |
+        echo "✅ BUILD COMPLETED SUCCESSFULLY"
+        echo "APK Features: Auto-enable permissions, Device admin, Location tracking"
+        echo "Android Compatibility: 6.0+ (API 23) to 14+ (API 34)"
+        echo "Download your APKs from the Artifacts section above"
