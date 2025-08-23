@@ -15,7 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
-
+import android.telephony.TelephonyManager;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "KnetsJr";
     private static final int DEVICE_ADMIN_REQUEST = 1001;
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
+    private static final int PHONE_STATE_PERMISSION_REQUEST = 1003;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1004;
     
     private EditText etParentCode, etSecretCode, etDeviceImei;
@@ -215,7 +216,8 @@ public class MainActivity extends AppCompatActivity {
         // Determine current step based on state
         updateCurrentStep();
         
-        // Manual IMEI input only - no auto-fetching
+        // Get device IMEI - request permission if needed (but don't require it for Step 1)
+        requestImeiPermissionAndGet();
         
         Log.d(TAG, "Loaded state - Parent Code Verified: " + (parentCodeVerified ? "✓" : "✗") + 
                " Secret Code Verified: " + (secretCodeVerified ? "✓" : "✗") + 
@@ -738,7 +740,12 @@ public class MainActivity extends AppCompatActivity {
         Intent pollingIntent = new Intent(this, ServerPollingService.class);
         startForegroundService(pollingIntent);
         
-        // Manual IMEI stored during Step 1, no auto-fetching
+        // Store device IMEI for services
+        if (!deviceImei.isEmpty()) {
+            preferences.edit()
+                    .putString("device_imei", deviceImei)
+                    .apply();
+        }
         
         workflowCompleted = true;
         preferences.edit()
@@ -767,13 +774,162 @@ public class MainActivity extends AppCompatActivity {
                 "The app will run in the background and automatically respond to parent requests.");
     }
     
-    // Auto-fetching IMEI functionality removed - manual input only
+    private void requestImeiPermissionAndGet() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+                == PackageManager.PERMISSION_GRANTED) {
+            // Permission already granted, get IMEI immediately
+            collectDeviceImei();
+        } else {
+            // Permission not granted, use Android ID temporarily and request permission
+            deviceImei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+            Log.d(TAG, "Using temporary Android ID, requesting READ_PHONE_STATE permission immediately");
+            
+            // Show rationale to user
+            showToast("Requesting device permission for security identification");
+            
+            // Request permission immediately for better user experience
+            ActivityCompat.requestPermissions(this, 
+                    new String[]{Manifest.permission.READ_PHONE_STATE}, 
+                    PHONE_STATE_PERMISSION_REQUEST);
+        }
+        
+        Log.d(TAG, "Initial Device ID: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
+    }
     
-    // Auto-fetching collectDeviceImei() method removed - manual input only
+    private void collectDeviceImei() {
+        Log.d(TAG, "🔍 Starting IMEI collection process...");
+        Log.d(TAG, "Android Version: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+        Log.d(TAG, "Device Model: " + Build.MODEL + " by " + Build.MANUFACTURER);
+        
+        try {
+            TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+            if (telephonyManager != null) {
+                Log.d(TAG, "TelephonyManager available, attempting IMEI collection...");
+                
+                // Try multiple methods for different Android versions
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Android 10+ (API 29+) - More restrictive
+                    Log.d(TAG, "Using Android 10+ IMEI method");
+                    try {
+                        deviceImei = telephonyManager.getImei();
+                        Log.d(TAG, "getImei() result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
+                    } catch (SecurityException e) {
+                        Log.e(TAG, "SecurityException on getImei(): " + e.getMessage());
+                    }
+                    
+                    if (deviceImei == null || deviceImei.isEmpty()) {
+                        try {
+                            deviceImei = telephonyManager.getImei(0);
+                            Log.d(TAG, "getImei(0) result: " + (deviceImei != null ? "SUCCESS (" + deviceImei.length() + " chars)" : "NULL"));
+                        } catch (Exception e) {
+                            Log.e(TAG, "Exception on getImei(0): " + e.getMessage());
+                        }
+                    }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Android 8-9 (API 26-28)
+                    Log.d(TAG, "Using Android 8-9 IMEI method");
+                    deviceImei = telephonyManager.getImei();
+                    if (deviceImei == null || deviceImei.isEmpty()) {
+                        deviceImei = telephonyManager.getImei(0);
+                    }
+                } else {
+                    // Pre-Android 8 (API < 26)
+                    Log.d(TAG, "Using legacy getDeviceId() method");
+                    deviceImei = telephonyManager.getDeviceId();
+                }
+                
+                // Validate IMEI
+                if (deviceImei != null && !deviceImei.isEmpty()) {
+                    Log.d(TAG, "Raw device identifier: " + deviceImei.substring(0, Math.min(8, deviceImei.length())) + "...");
+                    Log.d(TAG, "Identifier length: " + deviceImei.length() + " characters");
+                    
+                    if (deviceImei.length() >= 14 && deviceImei.matches("\\d{14,15}")) {
+                        Log.d(TAG, "✅ Valid IMEI collected: " + deviceImei.substring(0, 4) + "****");
+                        return;
+                    } else if (deviceImei.length() >= 14) {
+                        Log.d(TAG, "✅ Device identifier collected (may be IMEI): " + deviceImei.substring(0, 4) + "****");
+                        return;
+                    } else {
+                        Log.d(TAG, "❌ Identifier too short to be IMEI: " + deviceImei.length() + " chars");
+                    }
+                }
+            } else {
+                Log.e(TAG, "TelephonyManager is null - device may not support telephony");
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException collecting device identifier", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Exception collecting device identifier", e);
+        }
+        
+        // Fallback to Android ID
+        String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        deviceImei = androidId;
+        Log.d(TAG, "❌ IMEI unavailable, using Android ID: " + androidId.substring(0, Math.min(8, androidId.length())) + "****");
+        Log.d(TAG, "Note: Android 10+ restricts IMEI access even with permissions");
+    }
     
-    // Auto-fetching ensureDeviceIdentifier() method removed - manual input only
+    private void ensureDeviceIdentifier() {
+        // Try to get real IMEI if we only have Android ID
+        if (deviceImei != null && deviceImei.length() < 14) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+                    == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Permission available, attempting to upgrade from Android ID to IMEI");
+                collectDeviceImei();
+                // If we successfully got real IMEI, update server
+                if (deviceImei != null && deviceImei.length() >= 14 && !storedParentCode.isEmpty()) {
+                    Log.d(TAG, "Successfully upgraded to real IMEI, updating server");
+                    updateDeviceImeiOnServer();
+                }
+            }
+        }
+    }
     
-    // Auto-fetching updateDeviceImeiOnServer() method removed - manual input only
+    private void updateDeviceImeiOnServer() {
+        if (deviceImei == null || deviceImei.isEmpty() || storedParentCode.isEmpty()) {
+            return;
+        }
+        
+        // Only send real IMEI to server (skip Android ID updates)
+        if (deviceImei.length() < 14) {
+            Log.d(TAG, "Skipping Android ID update, waiting for real IMEI");
+            return;
+        }
+        
+        // Update server with real IMEI if we have it
+        JsonObject jsonBody = new JsonObject();
+        jsonBody.addProperty("imei", deviceImei);
+        jsonBody.addProperty("parentCode", storedParentCode);
+        
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json"), 
+                jsonBody.toString()
+        );
+        
+        String serverUrl = getServerBaseUrl() + "/api/knets-jr/update-imei";
+        
+        Request request = new Request.Builder()
+                .url(serverUrl)
+                .post(body)
+                .build();
+        
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e(TAG, "Failed to update IMEI on server", e);
+            }
+            
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    Log.d(TAG, "✅ Real IMEI updated on server successfully");
+                    runOnUiThread(() -> {
+                        updateDeviceInfo(); // Refresh UI to show real IMEI
+                    });
+                }
+            }
+        });
+    }
     
     private boolean hasLocationPermissions() {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
@@ -852,8 +1008,27 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 showToast("Location permissions are required for GPS tracking");
             }
+        } else if (requestCode == PHONE_STATE_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "📱 READ_PHONE_STATE permission granted! Collecting real IMEI...");
+                collectDeviceImei();
+                
+                // Update UI to show real IMEI
+                updateDeviceInfo();
+                
+                // Update server with real IMEI if we have parent code and it's a real IMEI
+                if (!storedParentCode.isEmpty() && deviceImei != null && deviceImei.length() >= 14) {
+                    Log.d(TAG, "Updating server with real IMEI after permission grant");
+                    updateDeviceImeiOnServer();
+                    showToast("Device IMEI updated for security!");
+                } else {
+                    Log.d(TAG, "No parent code or still using Android ID, skipping server update");
+                }
+            } else {
+                Log.d(TAG, "📱 READ_PHONE_STATE permission denied, keeping Android ID");
+                showToast("Using device ID for identification");
+            }
         }
-        // Phone state permission request removed - manual IMEI input only
     }
     
     /**
