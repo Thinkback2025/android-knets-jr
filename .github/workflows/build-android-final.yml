@@ -1,4 +1,4 @@
-name: Build Knets Jr Android APK - Production Ready
+name: Build Knets Jr Android APK
 
 on:
   push:
@@ -41,11 +41,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
           
-
-          
     - name: Create default app icons
       run: |
-        cd knets-minimal-android
         # Create simple colored rectangles as placeholders for icons
         mkdir -p app/src/main/res/mipmap-hdpi
         mkdir -p app/src/main/res/mipmap-mdpi  
@@ -66,33 +63,25 @@ jobs:
         echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
         
     - name: Make gradlew executable
-      run: |
-        cd knets-minimal-android
-        chmod +x ./gradlew
+      run: chmod +x ./gradlew
       
     - name: Clean project
-      run: |
-        cd knets-minimal-android
-        ./gradlew clean --stacktrace
+      run: ./gradlew clean --stacktrace
       
     - name: Build Debug APK
-      run: |
-        cd knets-minimal-android
-        ./gradlew assembleDebug --stacktrace --info
+      run: ./gradlew assembleDebug --stacktrace --info
       
     - name: Build Release APK  
-      run: |
-        cd knets-minimal-android
-        ./gradlew assembleRelease --stacktrace --info
+      run: ./gradlew assembleRelease --stacktrace --info
       
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: knets-jr-debug-apk
-        path: knets-minimal-android/app/build/outputs/apk/debug/app-debug.apk
+        path: app/build/outputs/apk/debug/app-debug.apk
         
     - name: Upload Release APK
       uses: actions/upload-artifact@v4  
       with:
         name: knets-jr-release-apk
-        path: knets-minimal-android/app/build/outputs/apk/release/app-release-unsigned.apk
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
