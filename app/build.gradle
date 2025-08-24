@@ -7,7 +7,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.knets.jr.enhanced"
+        applicationId "com.knets.jr"
         minSdk 23
         targetSdk 34
         versionCode 1

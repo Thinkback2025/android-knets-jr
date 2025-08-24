@@ -17,8 +17,6 @@ import android.os.Handler;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.Editable;
-import android.net.Uri;
-import android.os.PowerManager;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
@@ -60,8 +58,6 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
     private static final int PHONE_STATE_PERMISSION_REQUEST = 1003;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1004;
-    private static final int BATTERY_OPTIMIZATION_REQUEST = 1005;
-    private static final int OVERLAY_PERMISSION_REQUEST = 1006;
     
     private EditText etParentCode, etSecretCode, etDeviceImei;
     private TextView tvSecretCodeLabel, tvImeiLabel, tvImeiInstructions;
@@ -104,13 +100,6 @@ public class MainActivity extends AppCompatActivity {
         initializeViews();
         initializeServices();
         loadStoredData();
-        
-        // Auto-request all required permissions at startup
-        requestAllPermissionsAtStartup();
-        
-        // Handle auto-launch scenario
-        handleAutoLaunchMode();
-        
         updateUI();
         
         Log.d(TAG, "MainActivity created - Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
@@ -792,58 +781,6 @@ public class MainActivity extends AppCompatActivity {
         updateDeviceInfo();
     }
     
-    /**
-     * Auto-request all required permissions at app startup for seamless experience
-     */
-    private void requestAllPermissionsAtStartup() {
-        Log.d(TAG, "🔐 Auto-requesting Phone, Location, and Notification permissions");
-        
-        // Check which permissions are missing
-        boolean needsPhone = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
-                != PackageManager.PERMISSION_GRANTED;
-        boolean needsLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
-                != PackageManager.PERMISSION_GRANTED;
-        boolean needsNotifications = false;
-        
-        // Check notification permission for Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            needsNotifications = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
-                    != PackageManager.PERMISSION_GRANTED;
-        }
-        
-        // Build list of permissions to request
-        java.util.List<String> permissionsToRequest = new java.util.ArrayList<>();
-        
-        if (needsPhone) {
-            permissionsToRequest.add(Manifest.permission.READ_PHONE_STATE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                permissionsToRequest.add(Manifest.permission.READ_BASIC_PHONE_STATE);
-            }
-        }
-        
-        if (needsLocation) {
-            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
-            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-        }
-        
-        if (needsNotifications) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
-        
-        if (!permissionsToRequest.isEmpty()) {
-            Log.d(TAG, "🚀 Requesting " + permissionsToRequest.size() + " permissions automatically");
-            showToast("Enabling Phone, Location & Notification permissions for full functionality");
-            
-            String[] permissionArray = permissionsToRequest.toArray(new String[0]);
-            ActivityCompat.requestPermissions(this, permissionArray, LOCATION_PERMISSION_REQUEST);
-        } else {
-            Log.d(TAG, "✅ All required permissions already granted");
-        }
-        
-        // After basic permissions, request background activity permissions
-        requestBackgroundActivityPermissions();
-    }
-    
     private void requestImeiPermissionAndGet() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
                 == PackageManager.PERMISSION_GRANTED) {
@@ -864,66 +801,6 @@ public class MainActivity extends AppCompatActivity {
         }
         
         Log.d(TAG, "Initial Device ID: " + (deviceImei != null ? deviceImei.substring(0, Math.min(4, deviceImei.length())) + "****" : "null"));
-    }
-    
-    /**
-     * Handle auto-launch mode when app is started by BootReceiver
-     */
-    private void handleAutoLaunchMode() {
-        Intent intent = getIntent();
-        boolean autoLaunched = intent.getBooleanExtra("auto_launched", false);
-        
-        if (autoLaunched) {
-            Log.d(TAG, "🚀 App auto-launched by BootReceiver");
-            
-            // Check if setup is completed
-            if (workflowCompleted) {
-                Log.d(TAG, "✅ Setup completed - Running in background mode");
-                // Move app to background after brief initialization
-                moveTaskToBack(true);
-            } else {
-                Log.d(TAG, "⚠️ Setup not completed - Showing UI for user setup");
-                showToast("Knets Jr requires setup completion");
-            }
-        }
-    }
-    
-    /**
-     * Request background activity and battery optimization permissions
-     */
-    private void requestBackgroundActivityPermissions() {
-        Log.d(TAG, "🔋 Requesting background activity permissions");
-        
-        // Request battery optimization whitelist
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            String packageName = getPackageName();
-            
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                Log.d(TAG, "📱 Requesting battery optimization bypass");
-                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                intent.setData(Uri.parse("package:" + packageName));
-                try {
-                    startActivityForResult(intent, BATTERY_OPTIMIZATION_REQUEST);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to request battery optimization", e);
-                }
-            }
-        }
-        
-        // Request overlay permission for system alert window
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                Log.d(TAG, "🖥️ Requesting overlay permission");
-                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                try {
-                    startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to request overlay permission", e);
-                }
-            }
-        }
     }
     
     private void collectDeviceImei() {
@@ -1112,26 +989,6 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 showToast("Device admin is required for parental controls");
             }
-        } else if (requestCode == BATTERY_OPTIMIZATION_REQUEST) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-                if (powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-                    Log.d(TAG, "✅ Battery optimization bypass granted");
-                    showToast("Background activity enabled");
-                } else {
-                    Log.d(TAG, "⚠️ Battery optimization bypass denied");
-                    showToast("Battery optimization recommended for full functionality");
-                }
-            }
-        } else if (requestCode == OVERLAY_PERMISSION_REQUEST) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (Settings.canDrawOverlays(this)) {
-                    Log.d(TAG, "✅ Overlay permission granted");
-                    showToast("System overlay enabled");
-                } else {
-                    Log.d(TAG, "⚠️ Overlay permission denied");
-                }
-            }
         }
     }
     
@@ -1141,54 +998,22 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         
         if (requestCode == LOCATION_PERMISSION_REQUEST) {
-            // Handle multiple permissions (phone, location, notifications)
-            boolean phoneGranted = false;
-            boolean locationGranted = false;
-            boolean notificationGranted = false;
+            boolean fineLocationGranted = grantResults.length > 0 && 
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            boolean coarseLocationGranted = grantResults.length > 1 && 
+                    grantResults[1] == PackageManager.PERMISSION_GRANTED;
             
-            for (int i = 0; i < permissions.length; i++) {
-                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    String permission = permissions[i];
-                    if (permission.equals(Manifest.permission.READ_PHONE_STATE) || 
-                        permission.equals(Manifest.permission.READ_BASIC_PHONE_STATE)) {
-                        phoneGranted = true;
-                        Log.d(TAG, "✅ Phone permission granted");
-                    } else if (permission.equals(Manifest.permission.ACCESS_FINE_LOCATION) || 
-                               permission.equals(Manifest.permission.ACCESS_COARSE_LOCATION)) {
-                        locationGranted = true;
-                        Log.d(TAG, "✅ Location permission granted");
-                    } else if (permission.equals(Manifest.permission.POST_NOTIFICATIONS)) {
-                        notificationGranted = true;
-                        Log.d(TAG, "✅ Notification permission granted");
-                    }
-                }
-            }
-            
-            // Show success message for granted permissions
-            StringBuilder message = new StringBuilder("Permissions enabled: ");
-            if (phoneGranted) message.append("Phone ");
-            if (locationGranted) message.append("Location ");
-            if (notificationGranted) message.append("Notifications ");
-            
-            if (phoneGranted || locationGranted || notificationGranted) {
-                showToast(message.toString());
-                Log.d(TAG, "🚀 Auto-permissions setup completed - Phone: " + phoneGranted + 
-                          ", Location: " + locationGranted + ", Notifications: " + notificationGranted);
+            if (fineLocationGranted && coarseLocationGranted) {
+                showToast("Location permissions granted!");
                 
-                // If phone permission granted, try to collect IMEI
-                if (phoneGranted) {
-                    collectDeviceImei();
-                }
-                
-                // For Android 10+ request background location separately if location granted
-                if (locationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && 
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                // For Android 10+ request background location separately
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                     ActivityCompat.requestPermissions(this, 
                             new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 
                             LOCATION_PERMISSION_REQUEST + 1);
                 }
             } else {
-                showToast("Some permissions denied - app functionality may be limited");
+                showToast("Location permissions are required for GPS tracking");
             }
         } else if (requestCode == PHONE_STATE_PERMISSION_REQUEST) {
             // TEMPORARILY DISABLED IMEI COLLECTION FOR TESTING

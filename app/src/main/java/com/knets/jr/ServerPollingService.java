@@ -128,8 +128,10 @@ public class ServerPollingService extends Service {
     }
     
     private void checkForParentCommands() {
-        // Use production URL or configurable server address
+        // Use production URL or configurable server address  
         String serverUrl = getServerBaseUrl() + "/api/knets-jr/check-commands/" + deviceImei;
+        
+        Log.d(TAG, "🔍 Polling server for commands: " + serverUrl);
         
         Request request = new Request.Builder()
                 .url(serverUrl)
@@ -144,7 +146,7 @@ public class ServerPollingService extends Service {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    Log.e(TAG, "Command check failed: " + response.message());
+                    Log.e(TAG, "❌ Command check failed: " + response.message());
                     response.close();
                     return;
                 }
@@ -152,15 +154,20 @@ public class ServerPollingService extends Service {
                 String responseBody = response.body() != null ? response.body().string() : "";
                 response.close();
                 
+                Log.d(TAG, "📡 Raw server response: " + responseBody);
+                
                 try {
                     JsonObject jsonResponse = new Gson().fromJson(responseBody, JsonObject.class);
                     
                     if (jsonResponse.has("commands") && jsonResponse.get("commands").isJsonArray()) {
+                        Log.d(TAG, "✅ Processing " + jsonResponse.get("commands").getAsJsonArray().size() + " commands");
                         processCommands(jsonResponse.get("commands").getAsJsonArray());
+                    } else {
+                        Log.d(TAG, "📭 No commands received from server");
                     }
                     
                 } catch (Exception e) {
-                    Log.e(TAG, "Error processing command response", e);
+                    Log.e(TAG, "❌ Error processing command response: " + responseBody, e);
                 }
             }
         });
@@ -179,9 +186,6 @@ public class ServerPollingService extends Service {
                     break;
                 case "REQUEST_LOCATION":
                     handleLocationRequestCommand();
-                    break;
-                case "FORCE_GPS_UPDATE":
-                    handleForceGpsUpdateCommand();
                     break;
                 case "LOCK_DEVICE":
                     handleLockDeviceCommand();
@@ -232,33 +236,6 @@ public class ServerPollingService extends Service {
         }
         
         updateNotification("Multi-layer location tracking: GPS→Network→Cell→IP");
-    }
-    
-    private void handleForceGpsUpdateCommand() {
-        Log.d(TAG, "🚀 FORCE GPS UPDATE: Parent demanding immediate real location transmission");
-        
-        // Force aggressive GPS collection and immediate transmission
-        Intent forceGpsIntent = new Intent(this, EnhancedLocationService.class);
-        forceGpsIntent.setAction("FORCE_GPS_IMMEDIATE");
-        forceGpsIntent.putExtra("aggressive_mode", true);
-        forceGpsIntent.putExtra("force_transmission", true);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(forceGpsIntent);
-        } else {
-            startService(forceGpsIntent);
-        }
-        
-        // Also try basic location service as backup
-        Intent basicLocationIntent = new Intent(this, LocationService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(basicLocationIntent);
-        } else {
-            startService(basicLocationIntent);
-        }
-        
-        updateNotification("🚀 FORCE GPS: Immediate real location transmission active");
-        Log.d(TAG, "✅ Force GPS command processed - multiple location services activated");
     }
     
     private void handleLockDeviceCommand() {

@@ -105,145 +105,38 @@ public class EnhancedLocationService extends Service implements LocationListener
         if ("REQUEST_LOCATION".equals(action)) {
             Log.d(TAG, "🌍 Multi-layer location request initiated by parent");
             requestLocationWithFallback();
-        } else if ("FORCE_GPS_IMMEDIATE".equals(action)) {
-            Log.d(TAG, "🚀 FORCE GPS IMMEDIATE: Aggressive location transmission mode");
-            boolean aggressiveMode = intent.getBooleanExtra("aggressive_mode", false);
-            boolean forceTransmission = intent.getBooleanExtra("force_transmission", false);
-            forceImmediateGpsTransmission(aggressiveMode, forceTransmission);
         }
         
         return START_NOT_STICKY;
     }
     
     /**
-     * Force immediate GPS transmission with aggressive location capture
-     */
-    private void forceImmediateGpsTransmission(boolean aggressiveMode, boolean forceTransmission) {
-        Log.d(TAG, "🚀 FORCING IMMEDIATE GPS TRANSMISSION - Parent demanding real location");
-        
-        // Send ANY available location immediately
-        boolean locationSent = sendCachedLocation();
-        
-        // Force fresh GPS requests on all providers simultaneously
-        if (!hasLocationPermissions()) {
-            Log.e(TAG, "❌ FORCE GPS: No location permissions - cannot send real location");
-            return;
-        }
-        
-        try {
-            if (locationManager != null) {
-                Log.d(TAG, "🚀 FORCE GPS: Requesting from ALL providers simultaneously");
-                
-                // Request from GPS provider
-                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, this, null);
-                
-                // Request from Network provider  
-                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, this, null);
-                
-                // Request from Passive provider if available
-                if (locationManager.getAllProviders().contains(LocationManager.PASSIVE_PROVIDER)) {
-                    locationManager.requestSingleUpdate(LocationManager.PASSIVE_PROVIDER, this, null);
-                }
-                
-                Log.d(TAG, "✅ FORCE GPS: All GPS providers activated for immediate transmission");
-            }
-        } catch (SecurityException e) {
-            Log.e(TAG, "❌ FORCE GPS: Security exception requesting immediate GPS", e);
-        }
-        
-        // Also try IP geolocation as final backup if no GPS
-        if (!locationSent) {
-            Log.d(TAG, "🌐 FORCE GPS: No cached location, trying IP geolocation backup");
-            tryIPGeolocation();
-        }
-    }
-    
-    /**
      * Request location using multiple methods with intelligent fallback
      */
     private void requestLocationWithFallback() {
-        Log.d(TAG, "🎯 Starting IMMEDIATE location capture for parent request");
+        Log.d(TAG, "🎯 Starting multi-layer location detection");
         
-        // AGGRESSIVE IMMEDIATE RESPONSE: Try all methods simultaneously
-        boolean locationSent = false;
-        
-        // Method 1: Send any cached GPS location immediately
-        locationSent |= sendCachedLocation();
-        
-        // Method 2: Request fresh GPS location (will trigger onLocationChanged)
-        requestFreshGPSLocation();
-        
-        // Method 3: Try Network location as backup
-        if (!locationSent) {
-            tryNetworkLocation();
+        // Method 1: Try GPS first (highest accuracy)
+        if (tryGPSLocation()) {
+            Log.d(TAG, "✅ GPS method initiated");
+            return; // GPS request sent, wait for callback
         }
         
-        // Method 4: Try Cell Tower as final backup
-        if (!locationSent) {
-            tryCellTowerLocation();
+        // Method 2: Try Network-based location
+        if (tryNetworkLocation()) {
+            Log.d(TAG, "✅ Network location method initiated");
+            return; // Network request sent, wait for callback
         }
         
-        Log.d(TAG, "✅ All location methods initiated for parent request");
-    }
-    
-    /**
-     * Send any available cached location immediately
-     */
-    private boolean sendCachedLocation() {
-        if (!hasLocationPermissions()) {
-            return false;
+        // Method 3: Try Cell Tower triangulation
+        if (tryCellTowerLocation()) {
+            Log.d(TAG, "✅ Cell tower location detected");
+            return; // Cell tower location sent
         }
         
-        try {
-            Location bestCached = null;
-            
-            if (locationManager != null) {
-                Location gpsLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                Location networkLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                
-                // Choose the most recent/accurate location
-                if (gpsLocation != null && networkLocation != null) {
-                    bestCached = gpsLocation.getAccuracy() < networkLocation.getAccuracy() ? gpsLocation : networkLocation;
-                } else if (gpsLocation != null) {
-                    bestCached = gpsLocation;
-                } else if (networkLocation != null) {
-                    bestCached = networkLocation;
-                }
-            }
-            
-            if (bestCached != null) {
-                Log.d(TAG, "📍 IMMEDIATE: Sending cached location to parent");
-                sendLocationToServer(bestCached, LocationMethod.GPS);
-                return true;
-            }
-        } catch (SecurityException e) {
-            Log.e(TAG, "Security exception getting cached location", e);
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Request fresh GPS location (will call onLocationChanged when ready)
-     */
-    private void requestFreshGPSLocation() {
-        if (!hasLocationPermissions()) {
-            Log.d(TAG, "❌ No location permissions for fresh GPS");
-            return;
-        }
-        
-        if (locationManager == null) {
-            Log.d(TAG, "❌ LocationManager not available");
-            return;
-        }
-        
-        try {
-            Log.d(TAG, "📡 REQUESTING FRESH GPS for parent (single update)");
-            locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, this, null);
-            locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, this, null);
-        } catch (SecurityException e) {
-            Log.e(TAG, "Security exception requesting fresh GPS", e);
-        }
+        // Method 4: Fallback to IP Geolocation
+        Log.d(TAG, "🌐 Falling back to IP geolocation");
+        tryIPGeolocation();
     }
     
     /**
