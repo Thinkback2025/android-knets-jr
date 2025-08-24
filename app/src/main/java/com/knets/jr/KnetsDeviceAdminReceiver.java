@@ -25,22 +25,8 @@ public class KnetsDeviceAdminReceiver extends DeviceAdminReceiver {
 
     @Override
     public CharSequence onDisableRequested(Context context, Intent intent) {
-        Log.d(TAG, "Device admin disable requested - BLOCKING unauthorized access");
-        
-        // CRITICAL SYSTEM-LEVEL FIX: Launch secret code verification activity
-        try {
-            Intent secretCodeIntent = new Intent(context, SecretCodeVerificationActivity.class);
-            secretCodeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(secretCodeIntent);
-            
-            // Block the disable request - user must verify secret code first
-            return "Admin disable blocked. Enter secret code to continue.";
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to launch secret code verification", e);
-            // Fallback protection - still block disable
-            return "Parental controls protected. Contact parent to disable.";
-        }
+        Log.d(TAG, "Device admin disable requested");
+        return "Disabling Knets Jr will remove parental controls from this device.";
     }
 
     @Override

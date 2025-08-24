@@ -10,8 +10,5 @@
         <encrypted-storage />
         <disable-camera />
         <disable-keyguard-features />
-        <!-- CRITICAL: Advanced location controls for system-level GPS enable -->
-        <set-global-proxy />
-        <disable-keyguard-features />
     </uses-policies>
 </device-admin>

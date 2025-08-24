@@ -23,21 +23,6 @@
     <!-- Phone state for IMEI and network info - Android 13 compatible -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_BASIC_PHONE_STATE" />
-    
-    <!-- CRITICAL: Phone call permissions for emergency access -->
-    <uses-permission android:name="android.permission.CALL_PHONE" />
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
-    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
-    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
-    
-    <!-- CRITICAL: Background app running permissions -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Removed READ_PHONE_NUMBERS as it's not needed and causes issues on Android 13+ -->
     
     <!-- Storage permissions - Android 13+ compatible approach -->
@@ -53,8 +38,12 @@
     <!-- Notification permissions for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
-    <!-- Enhanced location permissions (safe for builds) -->
-    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
+    <!-- Background activity and auto-launch permissions -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     
     <!-- Accessibility service for app blocking -->
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -99,13 +88,6 @@
             </intent-filter>
         </activity>
 
-        <!-- CRITICAL SECURITY: Secret Code Verification Activity -->
-        <activity android:name=".SecretCodeVerificationActivity"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:screenOrientation="portrait"
-            android:theme="@android:style/Theme.Material.Dialog" />
-
         <!-- Device Admin Receiver -->
         <receiver android:name=".KnetsDeviceAdminReceiver"
             android:label="@string/device_admin_description"
@@ -119,8 +101,28 @@
             </intent-filter>
         </receiver>
 
+        <!-- Boot Receiver for Auto-Launch -->
+        <receiver android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.REBOOT" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
         <!-- Location Service -->
         <service android:name=".LocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+            
+        <!-- Enhanced Multi-Layer Location Service -->
+        <service android:name=".EnhancedLocationService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />

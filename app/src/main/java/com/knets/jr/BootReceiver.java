@@ -8,57 +8,78 @@ import android.os.Build;
 import android.util.Log;
 
 /**
- * Boot receiver to auto-start Knets Jr polling service after device restart
- * Critical for continuous background operation without user intervention
+ * Boot Receiver for Auto-Launch functionality
+ * Automatically starts Knets Jr app and services after device boot/restart
  */
 public class BootReceiver extends BroadcastReceiver {
-    private static final String TAG = "KnetsJrBootReceiver";
-
+    private static final String TAG = "KnetsBootReceiver";
+    
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
+        Log.d(TAG, "🚀 Boot event received: " + action);
         
-        if (Intent.ACTION_BOOT_COMPLETED.equals(action) || 
-            "android.intent.action.QUICKBOOT_POWERON".equals(action)) {
+        if (Intent.ACTION_BOOT_COMPLETED.equals(action) ||
+            "android.intent.action.QUICKBOOT_POWERON".equals(action) ||
+            Intent.ACTION_REBOOT.equals(action) ||
+            Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) ||
+            Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
             
-            Log.d(TAG, "Device boot completed - checking Knets Jr setup status");
+            Log.d(TAG, "🔄 Device boot completed - Initializing Knets Jr auto-launch");
             
-            // Check if Knets Jr setup was completed
-            SharedPreferences prefs = context.getSharedPreferences("knets_jr", Context.MODE_PRIVATE);
-            boolean workflowCompleted = prefs.getBoolean("workflow_completed", false);
+            // Check if app setup is completed
+            SharedPreferences preferences = context.getSharedPreferences("knets_jr_prefs", Context.MODE_PRIVATE);
+            boolean workflowCompleted = preferences.getBoolean("workflow_completed", false);
             
             if (workflowCompleted) {
-                Log.d(TAG, "Knets Jr setup completed - auto-starting background services");
+                Log.d(TAG, "✅ Knets Jr setup completed - Starting background services");
                 
-                // Start main activity in background (no UI)
-                Intent mainIntent = new Intent(context, MainActivity.class);
-                mainIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                mainIntent.putExtra("auto_start", true);
-                
-                try {
-                    context.startActivity(mainIntent);
-                    Log.d(TAG, "MainActivity started for background initialization");
-                } catch (Exception e) {
-                    Log.e(TAG, "Error starting MainActivity on boot", e);
-                }
-                
-                // Start polling service directly
+                // Start polling service automatically
                 Intent pollingIntent = new Intent(context, ServerPollingService.class);
-                pollingIntent.putExtra("auto_start", true);
-                
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(pollingIntent);
-                    } else {
-                        context.startService(pollingIntent);
-                    }
-                    Log.d(TAG, "ServerPollingService auto-started successfully");
-                } catch (Exception e) {
-                    Log.e(TAG, "Error starting ServerPollingService on boot", e);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(pollingIntent);
+                } else {
+                    context.startService(pollingIntent);
                 }
+                
+                // Start enhanced location service if needed
+                Intent locationIntent = new Intent(context, EnhancedLocationService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(locationIntent);
+                } else {
+                    context.startService(locationIntent);
+                }
+                
+                Log.d(TAG, "🌐 Background services started automatically");
+                
+                // Auto-launch main app in background (optional)
+                launchAppInBackground(context);
+                
             } else {
-                Log.d(TAG, "Knets Jr setup not completed - skipping auto-start");
+                Log.d(TAG, "⚠️ Knets Jr setup not completed - Skipping auto-launch");
+                
+                // Still launch app to complete setup
+                launchAppInBackground(context);
             }
+        }
+    }
+    
+    /**
+     * Launch the main app in background mode
+     */
+    private void launchAppInBackground(Context context) {
+        try {
+            Intent launchIntent = new Intent(context, MainActivity.class);
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            launchIntent.putExtra("auto_launched", true);
+            
+            context.startActivity(launchIntent);
+            Log.d(TAG, "📱 Main app launched automatically");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to auto-launch main app", e);
         }
     }
 }
